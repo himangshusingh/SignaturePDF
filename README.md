@@ -1,4 +1,8 @@
-### Add Signature to PDF
+# SignaturePDF
+
+### A simple tool to sign pdf securely
+
+-----
 
 To run the executable, download `.exe` file from releases and run it
 
