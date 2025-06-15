@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import sys
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -10,14 +11,35 @@ from reportlab.lib.utils import ImageReader
 import io
 import tempfile
 
-# Set Poppler path explicitly
-POPPLER_PATH = r"C:\poppler-24.08.0\Library\bin"  # Adjust this to your Poppler installation path
+# # Set Poppler path explicitly
+# if getattr(sys, 'frozen', False):
+#     # Running as executable
+#     POPPLER_PATH = os.path.join(os.path.dirname(sys.executable), 'poppler', 'bin')
+# else:
+#     # Running as script (development)
+#     POPPLER_PATH = r"C:\poppler-24.08.0\Library\bin"
+
+# # POPPLER_PATH = r"C:\poppler-24.08.0\Library\bin"  # Adjust this to your Poppler installation path
+# if getattr(sys, 'frozen', False):
+#     # Running as .exe
+#     poppler_path = os.path.join(os.path.dirname(sys.executable), 'poppler', 'bin')
+# else:
+#     # Running as script
+#     poppler_path = POPPLER_PATH if os.path.exists(POPPLER_PATH) else os.path.join(os.path.dirname(__file__), 'poppler', 'bin')
+
 if getattr(sys, 'frozen', False):
-    # Running as .exe
-    poppler_path = os.path.join(os.path.dirname(sys.executable), 'poppler', 'bin')
+    # Running as PyInstaller executable
+    # application_path = Path(sys.executable).parent
+    application_path = Path(sys._MEIPASS)
+    poppler_path = application_path / 'poppler' / 'bin'
+    os.environ['POPPLER_PATH'] = str(poppler_path)
 else:
-    # Running as script
-    poppler_path = POPPLER_PATH if os.path.exists(POPPLER_PATH) else os.path.join(os.path.dirname(__file__), 'poppler', 'bin')
+    # Running as Python script
+    poppler_path = r'C:\poppler-24.08.0\Library\bin'  # Your local Poppler path
+    os.environ['POPPLER_PATH'] = poppler_path
+
+print(f"POPPLER_PATH: {os.environ['POPPLER_PATH']}")
+print(f"Poppler bin exists: {os.path.exists(os.environ['POPPLER_PATH'])}")
 
 class SignaturePDFApp:
     def __init__(self, root):
@@ -28,7 +50,7 @@ class SignaturePDFApp:
         # Variables
         self.input_pdf_path = tk.StringVar()
         self.signature_path = tk.StringVar()
-        self.output_pdf_path = tk.StringVar(value="output/output.pdf")
+        self.output_pdf_path = tk.StringVar(value=os.path.join(os.getcwd(), "output.pdf"))
         self.page_num = tk.StringVar(value="0")
         self.signature_x = 0
         self.signature_y = 0
@@ -45,19 +67,30 @@ class SignaturePDFApp:
         self.page_count = 0
         
         # Store original dimensions for coordinate conversion
-        self.original_pdf_width = 0
-        self.original_pdf_height = 0
-        self.display_scale = 1.0  # Scale factor from PDF to canvas display
+        self.original_pdf_width = 0  # PDF width in points
+        self.original_pdf_height = 0  # PDF height in points
+        self.pdf_image_width = 0  # PDF image width in pixels at 150 DPI
+        self.pdf_image_height = 0  # PDF image height in pixels at 150 DPI
+        self.canvas_scale = 1.0  # Scale factor from PDF image to canvas display
         self.original_signature_width = 0
         self.original_signature_height = 0
+        
+        # Resize variables
+        self.is_resizing = False
+        self.resize_corner = None
+        self.resize_start_x = 0
+        self.resize_start_y = 0
+        self.resize_start_width = 0
+        self.resize_start_height = 0
 
         # GUI Layout
         self.setup_gui()
 
         # Bind canvas events
-        self.canvas.bind("<Button-1>", self.start_drag)
-        self.canvas.bind("<B1-Motion>", self.on_drag)
-        self.canvas.bind("<ButtonRelease-1>", self.end_drag)
+        self.canvas.bind("<Button-1>", self.on_canvas_click)
+        self.canvas.bind("<B1-Motion>", self.on_canvas_drag)
+        self.canvas.bind("<ButtonRelease-1>", self.on_canvas_release)
+        self.canvas.bind("<Motion>", self.on_canvas_motion)
         
         # Bind scale change to update signature
         self.scale.trace('w', self.on_scale_change)
@@ -89,6 +122,11 @@ class SignaturePDFApp:
 
         # Save button in top frame
         tk.Button(top_frame, text="Save PDF", command=self.process_pdf).grid(row=4, column=2, padx=5, pady=5)
+
+        # Instructions
+        instructions = tk.Label(top_frame, text="Instructions: Click and drag to move signature. Drag corners to resize.", 
+                               font=("Arial", 9), fg="blue")
+        instructions.grid(row=5, column=0, columnspan=3, pady=5)
 
         # Canvas frame with scrollbar
         canvas_frame = tk.Frame(self.root)
@@ -168,15 +206,12 @@ class SignaturePDFApp:
                 raise ValueError("Invalid page number.")
             
             original_image = images[0]
+            self.pdf_image_width, self.pdf_image_height = original_image.size
 
             # Calculate scale to fit canvas while preserving aspect ratio
-            pdf_img_width, pdf_img_height = original_image.size
-            canvas_scale = min(self.canvas_width / pdf_img_width, self.canvas_height / pdf_img_height)
-            display_width = int(pdf_img_width * canvas_scale)
-            display_height = int(pdf_img_height * canvas_scale)
-            
-            # Store the scale factor for coordinate conversion
-            self.display_scale = canvas_scale
+            self.canvas_scale = min(self.canvas_width / self.pdf_image_width, self.canvas_height / self.pdf_image_height)
+            display_width = int(self.pdf_image_width * self.canvas_scale)
+            display_height = int(self.pdf_image_height * self.canvas_scale)
             
             # Resize image for display
             self.pdf_page_image = original_image.resize((display_width, display_height), Image.LANCZOS)
@@ -194,6 +229,12 @@ class SignaturePDFApp:
             # Update scroll region
             self.update_scroll_region()
 
+            # Debug information
+            print(f"PDF dimensions (points): {self.original_pdf_width} x {self.original_pdf_height}")
+            print(f"PDF image dimensions (150 DPI): {self.pdf_image_width} x {self.pdf_image_height}")
+            print(f"Canvas scale: {self.canvas_scale}")
+            print(f"Display dimensions: {display_width} x {display_height}")
+
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
@@ -207,8 +248,8 @@ class SignaturePDFApp:
             original_signature = Image.open(signature_path).convert("RGBA")
             self.original_signature_width, self.original_signature_height = original_signature.size
             
-            # Apply scale for display (this is just for preview, actual scaling happens in PDF)
-            display_scale = self.scale.get() * self.display_scale
+            # Apply scale for display
+            display_scale = self.scale.get()
             display_width = int(self.original_signature_width * display_scale)
             display_height = int(self.original_signature_height * display_scale)
             self.signature_image = original_signature.resize((display_width, display_height), Image.LANCZOS)
@@ -227,22 +268,174 @@ class SignaturePDFApp:
         if self.signature_path.get() and os.path.exists(self.signature_path.get()):
             self.load_signature()
 
-    def start_drag(self, event):
-        self.drag_start_x = event.x
-        self.drag_start_y = event.y
+    def get_signature_bounds(self):
+        """Get the bounds of the signature image"""
+        if not self.signature_image:
+            return None
+        
+        width, height = self.signature_image.size
+        return {
+            'left': self.signature_x,
+            'top': self.signature_y,
+            'right': self.signature_x + width,
+            'bottom': self.signature_y + height,
+            'width': width,
+            'height': height
+        }
 
-    def on_drag(self, event):
+    def get_resize_corner(self, x, y):
+        """Determine which corner is being clicked for resizing"""
+        bounds = self.get_signature_bounds()
+        if not bounds:
+            return None
+        
+        corner_size = 10  # Size of the corner resize area
+        
+        # Check corners
+        if (bounds['right'] - corner_size <= x <= bounds['right'] and 
+            bounds['bottom'] - corner_size <= y <= bounds['bottom']):
+            return 'bottom-right'
+        elif (bounds['left'] <= x <= bounds['left'] + corner_size and 
+              bounds['bottom'] - corner_size <= y <= bounds['bottom']):
+            return 'bottom-left'
+        elif (bounds['right'] - corner_size <= x <= bounds['right'] and 
+              bounds['top'] <= y <= bounds['top'] + corner_size):
+            return 'top-right'
+        elif (bounds['left'] <= x <= bounds['left'] + corner_size and 
+              bounds['top'] <= y <= bounds['top'] + corner_size):
+            return 'top-left'
+        
+        return None
+
+    def is_point_in_signature(self, x, y):
+        """Check if a point is inside the signature image"""
+        bounds = self.get_signature_bounds()
+        if not bounds:
+            return False
+        
+        return (bounds['left'] <= x <= bounds['right'] and 
+                bounds['top'] <= y <= bounds['bottom'])
+
+    def on_canvas_motion(self, event):
+        """Handle mouse motion for cursor changes"""
         if self.signature_id:
-            dx = event.x - self.drag_start_x
-            dy = event.y - self.drag_start_y
-            self.signature_x += dx
-            self.signature_y += dy
-            self.canvas.move(self.signature_id, dx, dy)
+            corner = self.get_resize_corner(event.x, event.y)
+            if corner:
+                if corner in ['top-left', 'bottom-right']:
+                    self.canvas.config(cursor="size_nw_se")
+                else:
+                    self.canvas.config(cursor="size_ne_sw")
+            elif self.is_point_in_signature(event.x, event.y):
+                self.canvas.config(cursor="fleur")
+            else:
+                self.canvas.config(cursor="")
+
+    def on_canvas_click(self, event):
+        """Handle canvas click events"""
+        if not self.signature_id:
+            return
+        
+        corner = self.get_resize_corner(event.x, event.y)
+        if corner:
+            # Start resizing
+            self.is_resizing = True
+            self.resize_corner = corner
+            self.resize_start_x = event.x
+            self.resize_start_y = event.y
+            bounds = self.get_signature_bounds()
+            self.resize_start_width = bounds['width']
+            self.resize_start_height = bounds['height']
+        elif self.is_point_in_signature(event.x, event.y):
+            # Start dragging
+            self.is_resizing = False
             self.drag_start_x = event.x
             self.drag_start_y = event.y
 
-    def end_drag(self, event):
-        pass
+    def on_canvas_drag(self, event):
+        """Handle canvas drag events"""
+        if not self.signature_id:
+            return
+        
+        if self.is_resizing:
+            # Handle resizing
+            dx = event.x - self.resize_start_x
+            dy = event.y - self.resize_start_y
+            
+            # Calculate new dimensions based on corner being dragged
+            if self.resize_corner == 'bottom-right':
+                new_width = max(20, self.resize_start_width + dx)
+                new_height = max(20, self.resize_start_height + dy)
+            elif self.resize_corner == 'bottom-left':
+                new_width = max(20, self.resize_start_width - dx)
+                new_height = max(20, self.resize_start_height + dy)
+                # Adjust position when resizing from left
+                if new_width != self.resize_start_width - dx:
+                    self.signature_x = self.signature_x + (self.resize_start_width - new_width)
+            elif self.resize_corner == 'top-right':
+                new_width = max(20, self.resize_start_width + dx)
+                new_height = max(20, self.resize_start_height - dy)
+                # Adjust position when resizing from top
+                if new_height != self.resize_start_height - dy:
+                    self.signature_y = self.signature_y + (self.resize_start_height - new_height)
+            elif self.resize_corner == 'top-left':
+                new_width = max(20, self.resize_start_width - dx)
+                new_height = max(20, self.resize_start_height - dy)
+                # Adjust position when resizing from top-left
+                if new_width != self.resize_start_width - dx:
+                    self.signature_x = self.signature_x + (self.resize_start_width - new_width)
+                if new_height != self.resize_start_height - dy:
+                    self.signature_y = self.signature_y + (self.resize_start_height - new_height)
+            
+            # Calculate new scale based on width change
+            if self.original_signature_width > 0:
+                new_scale = new_width / self.original_signature_width
+                self.scale.set(round(new_scale, 2))
+            
+        else:
+            # Handle dragging
+            if hasattr(self, 'drag_start_x'):
+                dx = event.x - self.drag_start_x
+                dy = event.y - self.drag_start_y
+                self.signature_x += dx
+                self.signature_y += dy
+                self.canvas.move(self.signature_id, dx, dy)
+                self.drag_start_x = event.x
+                self.drag_start_y = event.y
+
+    def on_canvas_release(self, event):
+        """Handle canvas release events"""
+        self.is_resizing = False
+        self.resize_corner = None
+
+    def canvas_to_pdf_coordinates(self, canvas_x, canvas_y):
+        """Convert canvas coordinates to PDF coordinates (points)"""
+        # Step 1: Convert canvas coordinates to PDF image coordinates
+        pdf_image_x = canvas_x / self.canvas_scale
+        pdf_image_y = canvas_y / self.canvas_scale
+        
+        # Step 2: Convert PDF image coordinates to PDF points
+        # PDF image is at 150 DPI, PDF coordinates are at 72 DPI
+        dpi_scale = 72.0 / 150.0
+        pdf_x = pdf_image_x * dpi_scale
+        pdf_y = pdf_image_y * dpi_scale
+        
+        # Step 3: Flip Y coordinate (canvas is top-left origin, PDF is bottom-left origin)
+        pdf_y = self.original_pdf_height - pdf_y
+        
+        return pdf_x, pdf_y
+
+    def canvas_to_pdf_size(self, canvas_width, canvas_height):
+        """Convert canvas size to PDF size (points)"""
+        # Convert canvas size to PDF image size
+        pdf_image_width = canvas_width / self.canvas_scale
+        pdf_image_height = canvas_height / self.canvas_scale
+        
+        # Convert PDF image size to PDF points
+        dpi_scale = 72.0 / 150.0
+        pdf_width = pdf_image_width * dpi_scale
+        pdf_height = pdf_image_height * dpi_scale
+        
+        return pdf_width, pdf_height
 
     def add_signature_to_pdf(self, input_pdf_path, signature_path, output_pdf_path, page_num, scale):
         """Add signature to PDF using ReportLab for better control"""
@@ -259,23 +452,28 @@ class SignaturePDFApp:
             page_width = float(page.mediabox.width)
             page_height = float(page.mediabox.height)
 
-            # Convert canvas coordinates to PDF coordinates
-            # Canvas coordinates are in the scaled display image space
-            pdf_x = (self.signature_x / self.display_scale) * (page_width / (page_width * 150 / 72))
-            pdf_y = (self.signature_y / self.display_scale) * (page_height / (page_height * 150 / 72))
+            # Get signature dimensions on canvas
+            signature_canvas_width = self.original_signature_width * scale
+            signature_canvas_height = self.original_signature_height * scale
+
+            # Convert canvas coordinates and size to PDF coordinates and size
+            pdf_x, pdf_y_top = self.canvas_to_pdf_coordinates(self.signature_x, self.signature_y)
+            pdf_width, pdf_height = self.canvas_to_pdf_size(signature_canvas_width, signature_canvas_height)
             
-            # Convert from top-left origin (canvas) to bottom-left origin (PDF)
-            # Calculate signature size in PDF points
-            sig_width_pdf = (self.original_signature_width * scale) * (page_width / (page_width * 150 / 72))
-            sig_height_pdf = (self.original_signature_height * scale) * (page_height / (page_height * 150 / 72))
-            
-            pdf_y = page_height - pdf_y - sig_height_pdf
+            # Convert from top-left to bottom-left origin for PDF
+            pdf_y = pdf_y_top - pdf_height
+
+            # Debug information
+            print(f"Canvas position: ({self.signature_x}, {self.signature_y})")
+            print(f"Canvas size: {signature_canvas_width} x {signature_canvas_height}")
+            print(f"PDF position: ({pdf_x:.2f}, {pdf_y:.2f})")
+            print(f"PDF size: {pdf_width:.2f} x {pdf_height:.2f}")
 
             # Create a new PDF with just the signature using ReportLab
             signature_buffer = io.BytesIO()
             signature_canvas = canvas.Canvas(signature_buffer, pagesize=(page_width, page_height))
             
-            # Load and place signature image
+            # Load signature image
             sig_img = Image.open(signature_path).convert("RGBA")
             
             # Create a temporary file for the signature image
@@ -288,8 +486,8 @@ class SignaturePDFApp:
                 signature_canvas.drawImage(
                     temp_filename,
                     pdf_x, pdf_y,
-                    width=sig_width_pdf * scale,
-                    height=sig_height_pdf * scale,
+                    width=pdf_width,
+                    height=pdf_height,
                     mask='auto'  # Use alpha channel for transparency
                 )
                 signature_canvas.save()
@@ -338,10 +536,6 @@ class SignaturePDFApp:
                 raise ValueError("Input PDF not found.")
             if not os.path.exists(signature):
                 raise ValueError("Signature image not found.")
-
-            print(f"Canvas signature position: x={self.signature_x}, y={self.signature_y}")
-            print(f"Display scale: {self.display_scale}")
-            print(f"Signature scale: {scale}")
 
             self.add_signature_to_pdf(input_pdf, signature, output_pdf, page_num, scale)
             messagebox.showinfo("Success", f"PDF saved as '{output_pdf}'")

@@ -3,3 +3,11 @@
 /output/*
 /.venv/*
 test.py
+one.py
+/.vscode/*
+/poppler-24.08.0/*
+/poppler/*
+/build/*
+/dist/*
+SignaturePDFTool.spec
+/SignaturePDFTool_Distribution/*
