@@ -2,13 +2,12 @@
 /input/*
 /output/*
 /.venv/*
-test.py
-one.py
 /.vscode/*
 /poppler-24.08.0/*
 /poppler/*
 /build/*
 /dist/*
+/test/*
 SignaturePDFTool.spec
 /SignaturePDFTool_Distribution/*
-pckg.py
+todo.txt
