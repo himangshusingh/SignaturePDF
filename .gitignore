@@ -11,3 +11,4 @@ one.py
 /dist/*
 SignaturePDFTool.spec
 /SignaturePDFTool_Distribution/*
+pckg.py

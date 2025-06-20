@@ -6,8 +6,8 @@ from pathlib import Path
 
 # Configuration
 APP_NAME = "SignaturePDFTool"
-MAIN_SCRIPT = "main.py"  # Your main Python file
-POPPLER_PATH = r"C:\poppler-24.08.0\Library\bin"  # Adjust to your Poppler path
+MAIN_SCRIPT = "signpdf.py"  # Updated to match requested filename
+POPPLER_PATH = r"C:\\poppler-24.08.0\\Library\\bin"  # Adjust to your Poppler path
 ICON_PATH = None  # Set to your .ico file path if you have one
 
 def check_requirements():
@@ -34,12 +34,20 @@ def check_requirements():
         print(f"✗ Poppler path not found: {POPPLER_PATH}")
         print("Please update POPPLER_PATH in this script to point to your Poppler installation")
         return False
+    required_poppler_files = ['pdfinfo.exe', 'pdftoppm.exe']
+    missing_files = [f for f in required_poppler_files if not os.path.exists(os.path.join(POPPLER_PATH, f))]
+    if missing_files:
+        print(f"✗ Missing Poppler files: {missing_files}")
+        return False
     print(f"✓ Poppler found: {POPPLER_PATH}")
     
     return True
 
 def create_spec_file():
     """Create PyInstaller spec file with custom configuration"""
+    # Escape backslashes for the spec file
+    poppler_path_escaped = POPPLER_PATH.replace('\\', '\\\\')
+    icon_path_escaped = ICON_PATH.replace('\\', '\\\\') if ICON_PATH else ""
     
     spec_content = f'''# -*- mode: python ; coding: utf-8 -*-
 
@@ -47,7 +55,7 @@ block_cipher = None
 
 # Data files to include
 added_files = [
-    (r'C:\\poppler-24.08.0\\Library\\bin', 'poppler/bin'),
+    (r'{poppler_path_escaped}', 'poppler/bin'),
 ]
 
 a = Analysis(
@@ -58,17 +66,9 @@ a = Analysis(
     hiddenimports=[
         'PIL._tkinter_finder',
         'tkinter',
-        'tkinter.filedialog',
-        'tkinter.messagebox',
-        'tkinter.ttk',
         'PyPDF2',
-        'PIL',
-        'PIL.Image',
-        'PIL.ImageTk',
         'pdf2image',
         'reportlab',
-        'reportlab.pdfgen',
-        'reportlab.lib.utils',
     ],
     hookspath=[],
     hooksconfig={{}},
@@ -93,25 +93,34 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,  # Disable UPX to reduce startup time
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=False,  # Set to True if you want to see console output for debugging
+    console=False,  # Enable / Disable console while opening app
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='{ICON_PATH if ICON_PATH else ""}',
-    onefile=True,  # Enable single-file executable
+    icon='{icon_path_escaped}',
+    onefile=False,  # Use directory mode
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name='{APP_NAME}'
 )
 '''
-    
     with open(f"{APP_NAME}.spec", "w") as f:
         f.write(spec_content)
     
     print(f"✓ Created spec file: {APP_NAME}.spec")
-
 def build_executable():
     """Build the executable using PyInstaller"""
     print("Building executable...")
@@ -130,7 +139,7 @@ def build_executable():
         print("✓ Build successful!")
         
         # Check if executable was created
-        exe_path = os.path.join("dist", f"{APP_NAME}.exe")
+        exe_path = os.path.join("dist", APP_NAME, f"{APP_NAME}.exe")
         if os.path.exists(exe_path):
             print(f"✓ Executable created: {exe_path}")
             print(f"✓ Executable size: {os.path.getsize(exe_path) / (1024*1024):.1f} MB")
@@ -153,12 +162,8 @@ def create_distribution():
     if os.path.exists(dist_folder):
         shutil.rmtree(dist_folder)
     
-    os.makedirs(dist_folder)
-    
-    # Copy executable
-    exe_source = os.path.join("dist", f"{APP_NAME}.exe")
-    exe_dest = os.path.join(dist_folder, f"{APP_NAME}.exe")
-    shutil.copy2(exe_source, exe_dest)
+    # Copy entire dist/SignaturePDFTool folder
+    shutil.copytree(os.path.join("dist", APP_NAME), dist_folder)
     
     # Create README
     readme_content = f"""# {APP_NAME}
