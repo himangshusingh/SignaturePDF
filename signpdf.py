@@ -189,12 +189,20 @@ class SignaturePDFApp:
             self.pdf_page_image = original_image.resize((display_width, display_height), Image.LANCZOS)
 
             self.canvas.delete("all")
+            # Reset signature_id after deleting all canvas items
+            self.signature_id = None
+            
             self.pdf_tk = ImageTk.PhotoImage(self.pdf_page_image)
             self.canvas.create_image(0, 0, anchor="nw", image=self.pdf_tk)
             
-            self.signature_x = 50
-            self.signature_y = 50
-            self.load_signature()
+            # Only reset position if no signature was previously loaded
+            if not hasattr(self, 'signature_loaded') or not self.signature_loaded:
+                self.signature_x = 50
+                self.signature_y = 50
+            
+            # Force reload of signature if one was selected
+            if self.signature_path.get() and os.path.exists(self.signature_path.get()):
+                self.force_load_signature()
 
             self.update_scroll_region()
             print(f"load_pdf_page took {time.time() - start_time:.2f} seconds")
@@ -216,8 +224,10 @@ class SignaturePDFApp:
             display_width = int(self.original_signature_width * display_scale)
             display_height = int(self.original_signature_height * display_scale)
 
+            # Only use caching if not being forced to reload
             if hasattr(self, 'last_signature_path') and self.last_signature_path == signature_path and \
-               hasattr(self, 'last_display_scale') and self.last_display_scale == display_scale:
+            hasattr(self, 'last_display_scale') and self.last_display_scale == display_scale and \
+            not getattr(self, '_force_reload', False):
                 return
 
             self.last_signature_path = signature_path
@@ -225,16 +235,58 @@ class SignaturePDFApp:
             self.signature_image = original_signature.resize((display_width, display_height), Image.LANCZOS)
 
             self.signature_tk = ImageTk.PhotoImage(self.signature_image)
-            if self.signature_id:
+            
+            # Only try to delete if signature_id is valid
+            if self.signature_id and self.canvas.coords(self.signature_id):
                 self.canvas.delete(self.signature_id)
+            
             self.signature_id = self.canvas.create_image(self.signature_x, self.signature_y, anchor="nw", image=self.signature_tk)
+            
+            # Mark that signature has been loaded
+            self.signature_loaded = True
+            self._force_reload = False
 
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
-    def on_scale_change(self, *args):
-        if self.signature_path.get() and os.path.exists(self.signature_path.get()):
+    def force_load_signature(self):
+        """Force reload signature even if cached values match"""
+        self._force_reload = True
+        self.load_signature()
+
+    def browse_image(self):
+        file = filedialog.askopenfilename(filetypes=[("Image Files", "*.png;*.jpg;*.jpeg")])
+        if file:
+            self.signature_path.set(file)
+            # Reset caching to ensure signature loads
+            self.last_signature_path = None
+            self.last_display_scale = None
             self.load_signature()
+
+    def process_pdf(self):
+        try:
+            input_pdf = self.input_pdf_path.get()
+            signature = self.signature_path.get()
+            output_pdf = self.output_pdf_path.get()
+            page_num = int(self.page_num.get())
+            scale = self.scale.get()
+
+            if not os.path.exists(input_pdf):
+                raise ValueError("Input PDF not found.")
+            if not os.path.exists(signature):
+                raise ValueError("Signature image not found.")
+
+            self.add_signature_to_pdf(input_pdf, signature, output_pdf, page_num, scale)
+            messagebox.showinfo("Success", f"PDF saved as '{output_pdf}'")
+            
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+            print(f"Error in process_pdf: {str(e)}")
+
+
+    def on_scale_change(self, *args):
+            if self.signature_path.get() and os.path.exists(self.signature_path.get()):
+                self.load_signature()
 
     def get_signature_bounds(self):
         if not self.signature_image:
