@@ -59,6 +59,9 @@ class SignaturePDFApp:
         self.drag_start_x = 0
         self.drag_start_y = 0
 
+        # store signature position in each page
+        self.signature_positions = {}
+
         # GUI Layout
         self.setup_gui()
 
@@ -92,14 +95,24 @@ class SignaturePDFApp:
         self.page_dropdown.grid(row=3, column=1, padx=5, pady=5, sticky="w")
         self.page_dropdown.bind("<<ComboboxSelected>>", self.load_pdf_page)
 
+        # Position management buttons
+        tk.Button(top_frame, text="Save Position", command=self.save_signature_position, bg="lightgreen").grid(row=3, column=2, padx=5, pady=5)
+        tk.Button(top_frame, text="Clear Position", command=self.clear_signature_position, bg="lightcoral").grid(row=3, column=3, padx=5, pady=5)
+
         tk.Label(top_frame, text="Signature Scale:").grid(row=4, column=0, padx=5, pady=5, sticky="e")
         tk.Scale(top_frame, variable=self.scale, from_=0.1, to=2.0, resolution=0.1, orient=tk.HORIZONTAL, length=200).grid(row=4, column=1, padx=5, pady=5)
 
-        tk.Button(top_frame, text="Save PDF", command=self.process_pdf).grid(row=4, column=2, padx=5, pady=5)
+        # Processing buttons
+        tk.Button(top_frame, text="Save Single Page", command=self.process_single_page).grid(row=4, column=2, padx=5, pady=5)
+        tk.Button(top_frame, text="Save All Positioned", command=self.process_all_positioned_pages, bg="lightblue").grid(row=4, column=3, padx=5, pady=5)
 
-        instructions = tk.Label(top_frame, text="Instructions: Click and drag to move signature. Drag corners to resize.", 
-                               font=("Arial", 9), fg="blue")
-        instructions.grid(row=5, column=0, columnspan=3, pady=5)
+        # Status label
+        self.status_label = tk.Label(top_frame, text="No positions saved", font=("Arial", 9), fg="gray")
+        self.status_label.grid(row=5, column=0, columnspan=2, pady=2, sticky="w")
+
+        instructions = tk.Label(top_frame, text="Instructions: 1) Select page, position signature, click 'Save Position' 2) Repeat for other pages 3) Click 'Save All Positioned'", 
+                            font=("Arial", 9), fg="blue")
+        instructions.grid(row=6, column=0, columnspan=4, pady=5)
 
         canvas_frame = tk.Frame(self.root)
         canvas_frame.pack(pady=10)
@@ -112,6 +125,198 @@ class SignaturePDFApp:
 
         self.scrollbar.config(command=self.canvas.yview)
         self.canvas.bind("<Configure>", self.update_scroll_region)
+
+    def parse_page_ranges(self, page_string):
+        """Parse page string like '1,3,5-7' into list of page numbers (0-indexed)"""
+        pages = []
+        if not page_string.strip() or page_string.strip().startswith("e.g."):
+            return []
+        
+        try:
+            parts = page_string.split(',')
+            for part in parts:
+                part = part.strip()
+                if '-' in part:
+                    start, end = map(int, part.split('-'))
+                    pages.extend(range(start, end + 1))
+                else:
+                    pages.append(int(part))
+            
+            # Convert to 0-indexed and filter valid pages
+            pages = [p for p in pages if 0 <= p < self.page_count]
+            return sorted(list(set(pages)))  # Remove duplicates and sort
+        except ValueError:
+            raise ValueError("Invalid page format. Use format like '1,3,5-7'")
+        
+
+    def process_single_page(self):
+        """Process current page only"""
+        try:
+            input_pdf = self.input_pdf_path.get()
+            signature = self.signature_path.get()
+            output_pdf = self.output_pdf_path.get()
+            page_num = int(self.page_num.get())
+            scale = self.scale.get()
+
+            if not os.path.exists(input_pdf):
+                raise ValueError("Input PDF not found.")
+            if not os.path.exists(signature):
+                raise ValueError("Signature image not found.")
+
+            # Create single position entry for current page
+            positions = {page_num: (self.signature_x, self.signature_y, scale)}
+            
+            self.add_signature_to_pdf_with_positions(input_pdf, signature, output_pdf, positions)
+            messagebox.showinfo("Success", f"PDF saved as '{output_pdf}'")
+            
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+            print(f"Error in process_single_page: {str(e)}")
+
+        
+    def process_multi_page(self):
+        """Process multiple pages with same signature"""
+        try:
+            input_pdf = self.input_pdf_path.get()
+            signature = self.signature_path.get()
+            output_pdf = self.output_pdf_path.get()
+            pages_string = self.pages_entry.get()
+            scale = self.scale.get()
+
+            if not os.path.exists(input_pdf):
+                raise ValueError("Input PDF not found.")
+            if not os.path.exists(signature):
+                raise ValueError("Signature image not found.")
+
+            # Parse page ranges
+            pages_to_sign = self.parse_page_ranges(pages_string)
+            
+            if not pages_to_sign:
+                raise ValueError("No valid pages specified. Use format like '0,2,4-6' (0-indexed)")
+
+            # Validate page numbers
+            invalid_pages = [p for p in pages_to_sign if p >= self.page_count]
+            if invalid_pages:
+                raise ValueError(f"Invalid page numbers: {invalid_pages}. PDF has {self.page_count} pages (0-{self.page_count-1})")
+
+            self.add_signature_to_pdf(input_pdf, signature, output_pdf, pages_to_sign, scale)
+            messagebox.showinfo("Success", f"PDF saved as '{output_pdf}'\nSignature added to pages: {pages_to_sign}")
+            
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+            print(f"Error in process_multi_page: {str(e)}")
+
+
+    def process_all_positioned_pages(self):
+        """Process all pages that have saved positions"""
+        try:
+            input_pdf = self.input_pdf_path.get()
+            signature = self.signature_path.get()
+            output_pdf = self.output_pdf_path.get()
+
+            if not os.path.exists(input_pdf):
+                raise ValueError("Input PDF not found.")
+            if not os.path.exists(signature):
+                raise ValueError("Signature image not found.")
+            
+            if not self.signature_positions:
+                raise ValueError("No signature positions saved. Please position and save signatures on desired pages first.")
+
+            self.add_signature_to_pdf_with_positions(input_pdf, signature, output_pdf, self.signature_positions)
+            
+            pages = sorted(self.signature_positions.keys())
+            messagebox.showinfo("Success", f"PDF saved as '{output_pdf}'\nSignature added to pages: {pages}")
+            
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+            print(f"Error in process_all_positioned_pages: {str(e)}")
+
+    def add_signature_to_pdf_with_positions(self, input_pdf_path, signature_path, output_pdf_path, positions_dict):
+        """Add signatures to PDF with different positions for each page"""
+        start_time = time.time()
+        try:
+            reader = PdfReader(input_pdf_path)
+            writer = PdfWriter()
+            
+            # Validate all page numbers
+            for page_num in positions_dict.keys():
+                if page_num >= len(reader.pages):
+                    raise ValueError(f"Page {page_num} does not exist in the PDF. Total pages: {len(reader.pages)}")
+            
+            # Load signature image once
+            sig_img = Image.open(signature_path).convert("RGBA")
+            
+            # Process all pages
+            for i in range(len(reader.pages)):
+                current_page = reader.pages[i]
+                
+                if i in positions_dict:
+                    # This page needs a signature
+                    pos_x, pos_y, scale = positions_dict[i]
+                    
+                    # Get page dimensions
+                    page_width = float(current_page.mediabox.width)
+                    page_height = float(current_page.mediabox.height)
+                    
+                    # Calculate signature dimensions and position for this specific page
+                    signature_canvas_width = self.original_signature_width * scale
+                    signature_canvas_height = self.original_signature_height * scale
+                    
+                    # Convert canvas coordinates to PDF coordinates
+                    pdf_image_x = pos_x / self.canvas_scale
+                    pdf_image_y = pos_y / self.canvas_scale
+                    dpi_scale = 72.0 / 150.0
+                    pdf_x = pdf_image_x * dpi_scale
+                    pdf_y_top = self.original_pdf_height - (pdf_image_y * dpi_scale)
+                    
+                    # Convert size
+                    pdf_image_width = signature_canvas_width / self.canvas_scale
+                    pdf_image_height = signature_canvas_height / self.canvas_scale
+                    pdf_width = pdf_image_width * dpi_scale
+                    pdf_height = pdf_image_height * dpi_scale
+                    pdf_y = pdf_y_top - pdf_height
+                    
+                    # Create signature overlay for this page
+                    signature_buffer = io.BytesIO()
+                    signature_canvas = canvas.Canvas(signature_buffer, pagesize=(page_width, page_height))
+                    
+                    # Process signature image
+                    img_buffer = io.BytesIO()
+                    sig_img.save(img_buffer, format='PNG')
+                    img_buffer.seek(0)
+                    
+                    # Draw signature on canvas
+                    signature_canvas.drawImage(
+                        ImageReader(img_buffer),
+                        pdf_x, pdf_y,
+                        width=pdf_width,
+                        height=pdf_height,
+                        mask='auto'
+                    )
+                    signature_canvas.save()
+                    signature_buffer.seek(0)
+                    
+                    # Merge signature with current page
+                    signature_reader = PdfReader(signature_buffer)
+                    current_page.merge_page(signature_reader.pages[0])
+                    # signature_buffer.close()
+                    
+                    print(f"Added signature to page {i} at position ({pos_x}, {pos_y}) with scale {scale}")
+                
+                writer.add_page(current_page)
+            
+            # Save output PDF
+            os.makedirs(os.path.dirname(output_pdf_path), exist_ok=True)
+            with open(output_pdf_path, "wb") as output_file:
+                writer.write(output_file)
+            
+            print(f"add_signature_to_pdf_with_positions took {time.time() - start_time:.2f} seconds")
+            print(f"Signature added to pages: {sorted(positions_dict.keys())}")
+
+        except Exception as e:
+            print(f"Error in add_signature_to_pdf_with_positions: {str(e)}")
+            raise e
+
 
     def update_scroll_region(self, event=None):
         if self.pdf_page_image:
@@ -173,6 +378,7 @@ class SignaturePDFApp:
             messagebox.showerror("Error", str(e))
 
     def load_pdf_page(self, event=None):
+        """Modified to restore saved signature position when loading a page"""
         start_time = time.time()
         try:
             if not self.pdf_doc:
@@ -224,8 +430,14 @@ class SignaturePDFApp:
             self.pdf_tk = ImageTk.PhotoImage(self.pdf_page_image)
             self.canvas.create_image(0, 0, anchor="nw", image=self.pdf_tk)
             
-            # Only reset position if no signature was previously loaded
-            if not hasattr(self, 'signature_loaded') or not self.signature_loaded:
+            # Restore saved signature position if exists, otherwise use default
+            if page_num in self.signature_positions:
+                saved_x, saved_y, saved_scale = self.signature_positions[page_num]
+                self.signature_x = saved_x
+                self.signature_y = saved_y
+                self.scale.set(saved_scale)
+                print(f"Restored position for page {page_num}: ({saved_x}, {saved_y}, scale: {saved_scale})")
+            else:
                 self.signature_x = 50
                 self.signature_y = 50
             
@@ -234,11 +446,52 @@ class SignaturePDFApp:
                 self.force_load_signature()
 
             self.update_scroll_region()
+            self.update_status_label()
             print(f"load_pdf_page took {time.time() - start_time:.2f} seconds")
 
         except Exception as e:
             messagebox.showerror("Error", str(e))
             print(f"Error in load_pdf_page: {str(e)}")
+
+    def save_signature_position(self):
+        """Save current signature position and scale for current page"""
+        try:
+            if not self.signature_path.get() or not os.path.exists(self.signature_path.get()):
+                messagebox.showwarning("Warning", "Please select a signature image first.")
+                return
+            
+            current_page = int(self.page_num.get())
+            current_scale = self.scale.get()
+            
+            self.signature_positions[current_page] = (self.signature_x, self.signature_y, current_scale)
+            
+            self.update_status_label()
+            messagebox.showinfo("Success", f"Position saved for page {current_page}")
+            print(f"Saved position for page {current_page}: ({self.signature_x}, {self.signature_y}, scale: {current_scale})")
+            
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+
+    def clear_signature_position(self):
+        """Clear saved position for current page"""
+        try:
+            current_page = int(self.page_num.get())
+            if current_page in self.signature_positions:
+                del self.signature_positions[current_page]
+                self.update_status_label()
+                messagebox.showinfo("Success", f"Position cleared for page {current_page}")
+            else:
+                messagebox.showinfo("Info", f"No saved position for page {current_page}")
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+
+    def update_status_label(self):
+        """Update status label to show saved positions"""
+        if not self.signature_positions:
+            self.status_label.config(text="No positions saved", fg="gray")
+        else:
+            pages = sorted(self.signature_positions.keys())
+            self.status_label.config(text=f"Saved positions: Pages {pages}", fg="green")
 
     def load_signature(self):
         try:
@@ -284,25 +537,9 @@ class SignaturePDFApp:
         self.load_signature()
 
     def process_pdf(self):
-        try:
-            input_pdf = self.input_pdf_path.get()
-            signature = self.signature_path.get()
-            output_pdf = self.output_pdf_path.get()
-            page_num = int(self.page_num.get())
-            scale = self.scale.get()
-
-            if not os.path.exists(input_pdf):
-                raise ValueError("Input PDF not found.")
-            if not os.path.exists(signature):
-                raise ValueError("Signature image not found.")
-
-            self.add_signature_to_pdf(input_pdf, signature, output_pdf, page_num, scale)
-            messagebox.showinfo("Success", f"PDF saved as '{output_pdf}'")
-            
-        except Exception as e:
-            messagebox.showerror("Error", str(e))
-            print(f"Error in process_pdf: {str(e)}")
-
+        """Legacy method - redirects to single page processing"""
+        self.process_single_page()
+    
     def on_scale_change(self, *args):
         if self.signature_path.get() and os.path.exists(self.signature_path.get()):
             self.load_signature()
@@ -450,18 +687,22 @@ class SignaturePDFApp:
         pdf_height = pdf_image_height * dpi_scale
         return pdf_width, pdf_height
 
-    def add_signature_to_pdf(self, input_pdf_path, signature_path, output_pdf_path, page_num, scale):
+    def add_signature_to_pdf(self, input_pdf_path, signature_path, output_pdf_path, page_numbers, scale):
+        """Modified to handle multiple pages"""
         start_time = time.time()
         try:
             reader = PdfReader(input_pdf_path)
             writer = PdfWriter()
             
-            if page_num >= len(reader.pages):
-                raise ValueError(f"Page {page_num} does not exist in the PDF. Total pages: {len(reader.pages)}")
+            # Validate all page numbers
+            for page_num in page_numbers:
+                if page_num >= len(reader.pages):
+                    raise ValueError(f"Page {page_num} does not exist in the PDF. Total pages: {len(reader.pages)}")
             
-            page = reader.pages[page_num]
-            page_width = float(page.mediabox.width)
-            page_height = float(page.mediabox.height)
+            # Get page dimensions from the first page (assuming all pages have similar dimensions)
+            sample_page = reader.pages[page_numbers[0]] if page_numbers else reader.pages[0]
+            page_width = float(sample_page.mediabox.width)
+            page_height = float(sample_page.mediabox.height)
             
             # Calculate signature dimensions and position
             signature_canvas_width = self.original_signature_width * scale
@@ -471,7 +712,7 @@ class SignaturePDFApp:
             pdf_width, pdf_height = self.canvas_to_pdf_size(signature_canvas_width, signature_canvas_height)
             pdf_y = pdf_y_top - pdf_height
             
-            # Create signature overlay
+            # Create signature overlay once
             signature_buffer = io.BytesIO()
             signature_canvas = canvas.Canvas(signature_buffer, pagesize=(page_width, page_height))
             
@@ -492,13 +733,18 @@ class SignaturePDFApp:
             signature_canvas.save()
             signature_buffer.seek(0)
             
-            # Merge signature with PDF
+            # Create signature page for merging
             signature_reader = PdfReader(signature_buffer)
+            signature_page = signature_reader.pages[0]
             
+            # Process all pages
             for i in range(len(reader.pages)):
                 current_page = reader.pages[i]
-                if i == page_num:
-                    current_page.merge_page(signature_reader.pages[0])
+                if i in page_numbers:
+                    # Create a copy of the signature page for each target page
+                    signature_buffer.seek(0)
+                    temp_signature_reader = PdfReader(signature_buffer)
+                    current_page.merge_page(temp_signature_reader.pages[0])
                 writer.add_page(current_page)
             
             # Save output PDF
@@ -508,6 +754,7 @@ class SignaturePDFApp:
             
             signature_buffer.close()
             print(f"add_signature_to_pdf took {time.time() - start_time:.2f} seconds")
+            print(f"Signature added to pages: {page_numbers}")
 
         except Exception as e:
             print(f"Error in add_signature_to_pdf: {str(e)}")
