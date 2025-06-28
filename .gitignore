@@ -11,3 +11,5 @@
 SignaturePDFTool.spec
 /SignaturePDFTool_Distribution/*
 todo.txt
+signaturepdf.spec
+launch_app.bat

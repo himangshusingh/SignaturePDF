@@ -1,109 +1,176 @@
+#!/usr/bin/env python3
+"""
+Build script for PDF Signature App
+This script creates a spec file and builds the executable using PyInstaller
+"""
+
 import os
 import sys
-import shutil
 import subprocess
+import shutil
 from pathlib import Path
 
-# Configuration
-APP_NAME = "SignaturePDFTool"
-MAIN_SCRIPT = "signpdf.py"  # Updated to match requested filename
-POPPLER_PATH = r"C:\\poppler-24.08.0\\Library\\bin"  # Adjust to your Poppler path
-ICON_PATH = None  # Set to your .ico file path if you have one
-
-def check_requirements():
-    """Check if all required tools and files are available"""
-    print("Checking requirements...")
-    
-    # Check if PyInstaller is installed
-    try:
-        import PyInstaller
-        print(f"✓ PyInstaller found: {PyInstaller.__version__}")
-    except ImportError:
-        print("✗ PyInstaller not found. Installing...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "pyinstaller"])
-        print("✓ PyInstaller installed")
-    
-    # Check if main script exists
-    if not os.path.exists(MAIN_SCRIPT):
-        print(f"✗ Main script '{MAIN_SCRIPT}' not found")
-        return False
-    print(f"✓ Main script found: {MAIN_SCRIPT}")
-    
-    # Check if Poppler exists
-    if not os.path.exists(POPPLER_PATH):
-        print(f"✗ Poppler path not found: {POPPLER_PATH}")
-        print("Please update POPPLER_PATH in this script to point to your Poppler installation")
-        return False
-    required_poppler_files = ['pdfinfo.exe', 'pdftoppm.exe']
-    missing_files = [f for f in required_poppler_files if not os.path.exists(os.path.join(POPPLER_PATH, f))]
-    if missing_files:
-        print(f"✗ Missing Poppler files: {missing_files}")
-        return False
-    print(f"✓ Poppler found: {POPPLER_PATH}")
-    
-    return True
-
 def create_spec_file():
-    """Create PyInstaller spec file with custom configuration"""
-    # Escape backslashes for the spec file
-    poppler_path_escaped = POPPLER_PATH.replace('\\', '\\\\')
-    icon_path_escaped = ICON_PATH.replace('\\', '\\\\') if ICON_PATH else ""
+    """Create optimized spec file for the PDF Signature App"""
     
-    spec_content = f'''# -*- mode: python ; coding: utf-8 -*-
+    spec_content = '''# -*- mode: python ; coding: utf-8 -*-
 
 block_cipher = None
 
-# Data files to include
-added_files = [
-    (r'{poppler_path_escaped}', 'poppler/bin'),
-]
+# Define the main script path
+script_path = 'signpdf.py'  # Your main script file
 
 a = Analysis(
-    ['{MAIN_SCRIPT}'],
+    [script_path],
     pathex=[],
     binaries=[],
-    datas=added_files,
+    datas=[],
     hiddenimports=[
+        # Tkinter and GUI
         'PIL._tkinter_finder',
         'tkinter',
+        'tkinter.filedialog',
+        'tkinter.messagebox',
+        'tkinter.ttk',
+        'tkinter.constants',
+        'tkinter.font',
+        
+        # PDF processing
         'PyPDF2',
-        'pdf2image',
-        'reportlab',
+        'PyPDF2._merger',
+        'PyPDF2._reader',
+        'PyPDF2._writer',
+        'PyPDF2.xmp',
+        'PyPDF2.generic',
+        'PyPDF2.utils',
+        'PyPDF2.pdf',
+        'PyPDF2.filters',
+        
+        # PyMuPDF
+        'fitz',
+        'fitz.fitz',
+        'fitz.utils',
+        
+        # ReportLab
+        'reportlab.pdfgen.canvas',
+        'reportlab.lib.utils',
+        'reportlab.lib.colors',
+        'reportlab.lib.units',
+        'reportlab.pdfbase',
+        'reportlab.pdfbase.pdfmetrics',
+        'reportlab.rl_config',
+        
+        # PIL/Pillow
+        'PIL.Image',
+        'PIL.ImageTk',
+        'PIL.ImageDraw',
+        'PIL.ImageFont',
+        'PIL.ImageOps',
+        'PIL._imaging',
+        
+        # Core Python modules needed
+        'io',
+        'pathlib',
+        'os',
+        'sys',
+        'time',
+        
+        # XML modules (required by PyPDF2)
+        'xml',
+        'xml.etree',
+        'xml.etree.ElementTree',
+        'xml.etree.cElementTree',
+        'xml.dom',
+        'xml.dom.minidom',
+        'xml.parsers',
+        'xml.parsers.expat',
+        
+        # Email modules (required by urllib/reportlab)
+        'email',
+        'email.mime',
+        'email.mime.base',
+        'email.mime.text',
+        'email.mime.multipart',
+        'email.encoders',
+        'email.utils',
+        
+        # HTTP/URL modules (required by reportlab)
+        'http',
+        'http.client',
+        'urllib',
+        'urllib.request',
+        'urllib.parse',
+        'urllib.error',
+        
+        # Other required modules
+        'base64',
+        'hashlib',
+        'struct',
+        'binascii',
+        'zlib',
+        'collections',
+        'itertools',
+        'functools',
+        'operator',
+        'weakref',
+        'copy',
+        'tempfile',
+        'shutil'
     ],
     hookspath=[],
-    hooksconfig={{}},
+    hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        # Exclude only truly unnecessary modules
+        'matplotlib',
+        'numpy',
+        'scipy',
+        'pandas',
+        'jupyter',
+        'IPython',
+        'pytest',
+        'setuptools',
+        'wheel',
+        'pip',
+        'conda',
+        'tornado',
+        'zmq',
+        'sqlite3',
+        'requests',
+        'django',
+        'flask',
+        'fastapi',
+        'selenium',
+        'opencv',
+        'cv2',
+        'pdf2image'  # Removed as it's no longer used
+    ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
     noarchive=False,
 )
 
+# Remove duplicate entries
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
     [],
-    name='{APP_NAME}',
+    exclude_binaries=True,
+    name='SignaturePDF',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=False,  # Disable UPX to reduce startup time
-    upx_exclude=[],
-    runtime_tmpdir=None,
-    console=False,  # Enable / Disable console while opening app
+    upx=True,  # Enable UPX compression for smaller size
+    console=False,  # Hide console window
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='{icon_path_escaped}',
-    onefile=False,  # Use directory mode
+    icon=None,  # Add icon path here if you have one: icon='icon.ico'
 )
 
 coll = COLLECT(
@@ -112,140 +179,147 @@ coll = COLLECT(
     a.zipfiles,
     a.datas,
     strip=False,
-    upx=False,
+    upx=True,
     upx_exclude=[],
-    name='{APP_NAME}'
+    name='SignaturePDF'
 )
 '''
-    with open(f"{APP_NAME}.spec", "w") as f:
+    
+    # Write spec file
+    with open('signaturepdf.spec', 'w') as f:
         f.write(spec_content)
     
-    print(f"✓ Created spec file: {APP_NAME}.spec")
+    print("✓ Spec file 'signaturepdf.spec' created successfully")
+
+def check_dependencies():
+    """Check if required tools are installed"""
+    print("Checking dependencies...")
+    
+    try:
+        import PyInstaller
+        print("✓ PyInstaller is installed")
+    except ImportError:
+        print("✗ PyInstaller not found. Installing...")
+        subprocess.run([sys.executable, '-m', 'pip', 'install', 'pyinstaller'], check=True)
+        print("✓ PyInstaller installed")
+    
+    # Check if main script exists
+    if not os.path.exists('signpdf.py'):
+        print("✗ Main script 'signpdf.py' not found in current directory")
+        return False
+    else:
+        print("✓ Main script 'signpdf.py' found")
+    
+    return True
+
+def clean_previous_builds():
+    """Clean previous build artifacts"""
+    print("Cleaning previous builds...")
+    
+    dirs_to_clean = ['build', 'dist', '__pycache__']
+    files_to_clean = ['*.spec']
+    
+    for dir_name in dirs_to_clean:
+        if os.path.exists(dir_name):
+            shutil.rmtree(dir_name)
+            print(f"✓ Removed {dir_name}")
+    
+    # Clean spec files except the one we're about to create
+    for spec_file in Path('.').glob('*.spec'):
+        if spec_file.name != 'signaturepdf.spec':
+            spec_file.unlink()
+            print(f"✓ Removed {spec_file}")
+
 def build_executable():
     """Build the executable using PyInstaller"""
     print("Building executable...")
     
-    # Clean previous builds
-    if os.path.exists("dist"):
-        shutil.rmtree("dist")
-    if os.path.exists("build"):
-        shutil.rmtree("build")
-    
-    # Build using spec file
-    cmd = [sys.executable, "-m", "PyInstaller", f"{APP_NAME}.spec"]
-    
     try:
-        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-        print("✓ Build successful!")
+        # Run PyInstaller with the spec file
+        cmd = [sys.executable, '-m', 'PyInstaller', '--clean', '--noconfirm', 'signaturepdf.spec']
         
-        # Check if executable was created
-        exe_path = os.path.join("dist", APP_NAME, f"{APP_NAME}.exe")
-        if os.path.exists(exe_path):
-            print(f"✓ Executable created: {exe_path}")
-            print(f"✓ Executable size: {os.path.getsize(exe_path) / (1024*1024):.1f} MB")
+        print(f"Running: {' '.join(cmd)}")
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            print("✓ Build completed successfully!")
+            print(f"Executable location: {os.path.abspath('dist/SignaturePDF')}")
+            
+            # Check if executable was created
+            exe_path = Path('dist/SignaturePDF/SignaturePDF.exe')
+            if exe_path.exists():
+                size_mb = exe_path.stat().st_size / (1024 * 1024)
+                print(f"✓ Executable size: {size_mb:.2f} MB")
+            
             return True
         else:
-            print("✗ Executable not found in dist folder")
+            print("✗ Build failed!")
+            print("STDOUT:", result.stdout)
+            print("STDERR:", result.stderr)
             return False
             
-    except subprocess.CalledProcessError as e:
-        print(f"✗ Build failed: {e}")
-        print("STDOUT:", e.stdout)
-        print("STDERR:", e.stderr)
+    except Exception as e:
+        print(f"✗ Build error: {e}")
         return False
 
-def create_distribution():
-    """Create a clean distribution folder"""
-    print("Creating distribution...")
+def create_launcher_script():
+    """Create a simple launcher script for easier testing"""
+    launcher_content = '''@echo off
+echo Starting PDF Signature Tool...
+cd /d "%~dp0"
+if exist "dist\\SignaturePDF\\SignaturePDF.exe" (
+    start "" "dist\\SignaturePDF\\SignaturePDF.exe"
+) else (
+    echo Error: SignaturePDF.exe not found in dist\\SignaturePDF\\
+    pause
+)
+'''
     
-    dist_folder = f"{APP_NAME}_Distribution"
-    if os.path.exists(dist_folder):
-        shutil.rmtree(dist_folder)
+    with open('launch_app.bat', 'w') as f:
+        f.write(launcher_content)
     
-    # Copy entire dist/SignaturePDFTool folder
-    shutil.copytree(os.path.join("dist", APP_NAME), dist_folder)
-    
-    # Create README
-    readme_content = f"""# {APP_NAME}
-
-## About
-Signature PDF Tool - A standalone application for adding signatures to PDF documents.
-
-## Usage
-1. Double-click {APP_NAME}.exe to run the application
-2. Browse and select your PDF file
-3. Browse and select your signature image (PNG, JPG, JPEG)
-4. Select the page where you want to add the signature
-5. Drag and drop the signature on the preview to position it
-6. Resize the signature by dragging the corners
-7. Adjust the scale using the slider if needed
-8. Click "Save PDF" to create the signed document
-
-## Features
-- Drag and drop signature positioning
-- Resize signatures by dragging corners
-- Scale adjustment slider
-- Preview of PDF pages
-- Support for multiple image formats
-- Transparent signature support
-
-## System Requirements
-- Windows 7 or later (64-bit)
-- No additional software installation required
-
-## Notes
-- The application is completely standalone and portable
-- All dependencies including Poppler are bundled
-- No internet connection required
-- Created with PyInstaller
-
-## Version Information
-- Built on: {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-- Python version: {sys.version}
-"""
-    
-    with open(os.path.join(dist_folder, "README.txt"), "w") as f:
-        f.write(readme_content)
-    
-    print(f"✓ Distribution created: {dist_folder}")
-    return dist_folder
+    print("✓ Launcher script 'launch_app.bat' created")
 
 def main():
     """Main build process"""
-    print(f"Building {APP_NAME} executable...")
-    print("=" * 50)
+    print("=== PDF Signature App Build Script ===")
+    print()
     
-    # Check requirements
-    if not check_requirements():
-        print("\n✗ Requirements check failed. Please fix the issues above.")
-        return False
+    # Step 1: Check dependencies
+    if not check_dependencies():
+        print("✗ Dependency check failed. Please fix the issues and try again.")
+        return
     
-    print("\n" + "=" * 50)
+    print()
     
-    # Create spec file
+    # Step 2: Clean previous builds
+    clean_previous_builds()
+    print()
+    
+    # Step 3: Create spec file
     create_spec_file()
+    print()
     
-    print("\n" + "=" * 50)
+    # Step 4: Build executable
+    success = build_executable()
+    print()
     
-    # Build executable
-    if not build_executable():
-        print("\n✗ Build process failed.")
-        return False
-    
-    print("\n" + "=" * 50)
-    
-    # Create distribution
-    dist_folder = create_distribution()
-    
-    print("\n" + "=" * 50)
-    print("BUILD COMPLETE!")
-    print(f"✓ Your executable is ready in: {dist_folder}")
-    print(f"✓ Main executable: {dist_folder}/{APP_NAME}.exe")
-    print("\nYou can now copy this folder to any Windows machine and run the executable.")
-    
-    return True
+    if success:
+        # Step 5: Create launcher
+        create_launcher_script()
+        print()
+        
+        print("🎉 Build completed successfully!")
+        print()
+        print("Next steps:")
+        print("1. Test the app by running: launch_app.bat")
+        print("2. Or navigate to: dist/SignaturePDF/SignaturePDF.exe")
+        print("3. The entire 'dist/SignaturePDF' folder can be distributed")
+        print()
+        print("Note: Make sure to include the entire 'SignaturePDF' folder")
+        print("when distributing, as it contains all required dependencies.")
+    else:
+        print("❌ Build failed. Please check the error messages above.")
 
 if __name__ == "__main__":
-    success = main()
-    input("\nPress Enter to exit...")
-    sys.exit(0 if success else 1)
+    main()
