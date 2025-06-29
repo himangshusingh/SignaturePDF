@@ -41,11 +41,11 @@ Run the application: `python src/main.py`
 
 ## Project Structure
 
-`src/`: Contains the source code.
-`main.py`: Application entry point.
-`gui.py`: GUI setup and event handling.
-`pdf_processor.py`: PDF and image processing logic.
-`utils.py`: Utility functions for page parsing and coordinate conversion.
+- `src/`: Contains the source code.
+- `main.py`: Application entry point.
+- `gui.py`: GUI setup and event handling.
+- `pdf_processor.py`: PDF and image processing logic.
+- `utils.py`: Utility functions for page parsing and coordinate conversion.
 
 
 `requirements.txt`: Lists dependencies.
