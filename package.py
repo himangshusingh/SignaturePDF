@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Build script for PDF Signature App
-This script creates a spec file and builds the executable using PyInstaller
+This script creates a spec file and builds the executable using PyInstaller for the multi-file structure
 """
 
 import os
@@ -18,14 +18,17 @@ def create_spec_file():
 block_cipher = None
 
 # Define the main script path
-script_path = 'signpdf.py'  # Your main script file
+script_path = 'src/main.py'  # Main entry point
 
 a = Analysis(
     [script_path],
-    pathex=[],
+    pathex=['src'],  # Add src directory to path
     binaries=[],
-    datas=[],
+    datas=[('src', 'src')],  # Include the entire src directory
     hiddenimports=[
+        'gui',  # Explicitly include package modules
+        'pdf_processor',
+        'utils',
         # Tkinter and GUI
         'PIL._tkinter_finder',
         'tkinter',
@@ -143,7 +146,7 @@ a = Analysis(
         'selenium',
         'opencv',
         'cv2',
-        'pdf2image'  # Removed as it's no longer used
+        'pdf2image'
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
@@ -163,14 +166,14 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,  # Enable UPX compression for smaller size
-    console=False,  # Hide console window
+    upx=True,
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,  # Add icon path here if you have one: icon='icon.ico'
+    icon=None,
 )
 
 coll = COLLECT(
@@ -203,12 +206,14 @@ def check_dependencies():
         subprocess.run([sys.executable, '-m', 'pip', 'install', 'pyinstaller'], check=True)
         print("✓ PyInstaller installed")
     
-    # Check if main script exists
-    if not os.path.exists('signpdf.py'):
-        print("✗ Main script 'signpdf.py' not found in current directory")
+    # Check if main script and other modules exist
+    required_files = ['src/main.py', 'src/gui.py', 'src/pdf_processor.py', 'src/utils.py']
+    missing_files = [f for f in required_files if not os.path.exists(f)]
+    if missing_files:
+        print(f"✗ Missing required files: {', '.join(missing_files)}")
         return False
     else:
-        print("✓ Main script 'signpdf.py' found")
+        print("✓ All required source files found")
     
     return True
 
@@ -216,7 +221,7 @@ def clean_previous_builds():
     """Clean previous build artifacts"""
     print("Cleaning previous builds...")
     
-    dirs_to_clean = ['build', 'dist', '__pycache__']
+    dirs_to_clean = ['build', 'dist', '__pycache__', 'src/__pycache__']
     files_to_clean = ['*.spec']
     
     for dir_name in dirs_to_clean:
@@ -278,7 +283,7 @@ if exist "dist\\SignaturePDF\\SignaturePDF.exe" (
     with open('launch_app.bat', 'w') as f:
         f.write(launcher_content)
     
-    print("✓ Launcher script 'launch_app.bat' created")
+    print("✓ Launcher script 'launch_app ticked successfully")
 
 def main():
     """Main build process"""
