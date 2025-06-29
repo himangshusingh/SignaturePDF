@@ -140,6 +140,25 @@ class SignaturePDFGUI:
             'height': height
         }
 
+    def constrain_signature_position(self, new_x, new_y):
+        """Ensure the signature stays within canvas boundaries"""
+        bounds = self.get_signature_bounds()
+        if not bounds:
+            return new_x, new_y
+
+        # Get canvas dimensions
+        canvas_width = self.app.canvas_width
+        canvas_height = self.app.canvas_height
+
+        # Constrain x and y to keep the entire signature within the canvas
+        max_x = canvas_width - bounds['width']
+        max_y = canvas_height - bounds['height']
+        
+        new_x = max(0, min(new_x, max_x))
+        new_y = max(0, min(new_y, max_y))
+        
+        return new_x, new_y
+
     def get_resize_corner(self, x, y):
         bounds = self.get_signature_bounds()
         if not bounds:
@@ -237,10 +256,17 @@ class SignaturePDFGUI:
             if hasattr(self.app, 'drag_start_x'):
                 dx = event.x - self.app.drag_start_x
                 dy = event.y - self.app.drag_start_y
-                if abs(dx) > 5 or abs(dy) > 5:
-                    self.app.signature_x += dx
-                    self.app.signature_y += dy
-                    self.app.canvas.move(self.app.pdf_processor.signature_id, dx, dy)
+                if abs(dx) > 2 or abs(dy) > 2:  # Reduced threshold for smoother dragging
+                    new_x = self.app.signature_x + dx
+                    new_y = self.app.signature_y + dy
+                    # Constrain the position within canvas bounds
+                    new_x, new_y = self.constrain_signature_position(new_x, new_y)
+                    # Calculate actual movement
+                    actual_dx = new_x - self.app.signature_x
+                    actual_dy = new_y - self.app.signature_y
+                    self.app.signature_x = new_x
+                    self.app.signature_y = new_y
+                    self.app.canvas.move(self.app.pdf_processor.signature_id, actual_dx, actual_dy)
                     self.app.drag_start_x = event.x
                     self.app.drag_start_y = event.y
 
