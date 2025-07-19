@@ -13,3 +13,4 @@ SignaturePDFTool.spec
 todo.txt
 signaturepdf.spec
 launch_app.bat
+*/__pycache__/*

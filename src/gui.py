@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 import os
+import time
 
 class SignaturePDFGUI:
     def __init__(self, app):
@@ -141,18 +142,18 @@ class SignaturePDFGUI:
         }
 
     def constrain_signature_position(self, new_x, new_y):
-        """Ensure the signature stays within canvas boundaries"""
+        """Ensure the signature stays within the PDF page boundaries"""
         bounds = self.get_signature_bounds()
         if not bounds:
             return new_x, new_y
 
-        # Get canvas dimensions
-        canvas_width = self.app.canvas_width
-        canvas_height = self.app.canvas_height
+        # Use PDF page dimensions instead of fixed canvas size
+        page_width = self.app.pdf_processor.pdf_image_width
+        page_height = self.app.pdf_processor.pdf_image_height
 
-        # Constrain x and y to keep the entire signature within the canvas
-        max_x = canvas_width - bounds['width']
-        max_y = canvas_height - bounds['height']
+        # Constrain x and y to keep the entire signature within the page
+        max_x = max(0, page_width - bounds['width'])
+        max_y = max(0, page_height - bounds['height'])
         
         new_x = max(0, min(new_x, max_x))
         new_y = max(0, min(new_y, max_y))
@@ -222,53 +223,173 @@ class SignaturePDFGUI:
             self.app.is_resizing = False
             self.app.drag_start_x = event.x
             self.app.drag_start_y = event.y
+            self.app.last_drag_time = 0  # Initialize drag time tracking
+
+    # def on_canvas_drag(self, event):
+    #     if not self.app.pdf_processor.signature_id:
+    #         return
+    #     try:
+    #         if self.app.is_resizing:
+    #             dx = event.x - self.app.resize_start_x
+    #             dy = event.y - self.app.resize_start_y
+    #             if self.app.resize_corner == 'bottom-right':
+    #                 new_width = max(20, self.app.resize_start_width + dx)
+    #                 new_height = max(20, self.app.resize_start_height + dy)
+    #             elif self.app.resize_corner == 'bottom-left':
+    #                 new_width = max(20, self.app.resize_start_width - dx)
+    #                 new_height = max(20, self.app.resize_start_height + dy)
+    #                 if new_width != self.app.resize_start_width - dx:
+    #                     self.app.signature_x = self.app.signature_x + (self.app.resize_start_width - new_width)
+    #             # elif self.app.resize_corner == 'top-right':
+    #             #     new_width = max(20, self.app.resize_start_width + dx)
+    #             #     new_height = max(20, self.app.resize_start_height - dy)
+    #             #     if new_height != self.app.resize_start_height - dy:
+    #             #         self.app.signature_y = self.app.signature_y + (self.app.resize_start_height - new_height)
+    #             # elif self.app.resize_corner == 'top-left':
+    #             #     new_width = max(20, self.app.resize_start_width - dx)
+    #             #     new_height = max(20, self.app.resize_start_height - dy)
+    #             #     if new_width != self.app.resize_start_width - dx:
+    #             #         self.app.signature_x = self.app.signature_x + (self.app.resize_start_width - new_width)
+    #             #     if new_height != self.app.resize_start_height - dy:
+    #             #         self.app.signature_y = self.app.signature_y + (self.app.resize_start_height - new_height)
+    #             elif self.app.resize_corner == 'top-right':
+    #                 new_width = max(20, self.app.resize_start_width + dx)
+    #                 new_height = max(20, self.app.resize_start_height - dy)
+    #                 # Adjust y so the top stays anchored to the cursor
+    #                 if new_height != self.app.resize_start_height - dy:
+    #                     self.app.signature_y = self.app.signature_y + (self.app.resize_start_height - new_height)
+    #             elif self.app.resize_corner == 'top-left':
+    #                 new_width = max(20, self.app.resize_start_width - dx)
+    #                 new_height = max(20, self.app.resize_start_height - dy)
+    #                 if new_width != self.app.resize_start_width - dx:
+    #                     self.app.signature_x = self.app.signature_x + (self.app.resize_start_width - new_width)
+    #                 if new_height != self.app.resize_start_height - dy:
+    #                     self.app.signature_y = self.app.signature_y + (self.app.resize_start_height - new_height)
+    #             if self.app.pdf_processor.original_signature_width > 0:
+    #                 new_scale = new_width / self.app.pdf_processor.original_signature_width
+    #                 self.app.scale.set(round(new_scale, 2))
+    #             # --- Begin auto-scroll logic ---
+    #             canvas = self.app.canvas
+    #             scroll_margin = 40  # pixels from top/bottom to trigger scroll
+    #             scroll_speed = 2    # lines per drag event
+
+    #             y = event.y
+
+    #             # Scroll down if near bottom
+    #             if y > canvas.winfo_height() - scroll_margin:
+    #                 canvas.yview_scroll(scroll_speed, "units")
+    #             # Scroll up if near top
+    #             elif y < scroll_margin:
+    #                 canvas.yview_scroll(-scroll_speed, "units")
+    #             # --- End auto-scroll logic ---
+
+    #             # ...existing drag logic...
+    #             if self.app.is_resizing:
+    #                 # resizing code...
+    #                 pass
+    #         else:
+    #             if hasattr(self.app, 'drag_start_x'):
+    #                 dx = event.x - self.app.drag_start_x
+    #                 dy = event.y - self.app.drag_start_y
+    #                 # Only move if significant movement since last drag
+    #                 # current_time = tk.Tk().winfo_fpixels('1i')  # Use Tkinter to get current time in milliseconds
+    #                 current_time = time.time() * 1000  # Get current time in milliseconds
+    #                 if not hasattr(self.app, 'last_drag_time'):
+    #                     self.app.last_drag_time = current_time
+    #                 time_delta = (current_time - self.app.last_drag_time) / 1000.0  # Time since last drag in seconds
+    #                 if abs(dx) > 2 or abs(dy) > 2 or time_delta > 0.1:  # Reduced threshold and time check
+    #                     new_x = self.app.signature_x + dx
+    #                     new_y = self.app.signature_y + dy
+    #                     # Constrain the position within page bounds
+    #                     new_x, new_y = self.constrain_signature_position(new_x, new_y)
+    #                     # Calculate actual movement
+    #                     actual_dx = new_x - self.app.signature_x
+    #                     actual_dy = new_y - self.app.signature_y
+    #                     self.app.signature_x = new_x
+    #                     self.app.signature_y = new_y
+    #                     self.app.canvas.move(self.app.pdf_processor.signature_id, actual_dx, actual_dy)
+    #                     self.app.drag_start_x = event.x
+    #                     self.app.drag_start_y = event.y
+    #                     self.app.last_drag_time = current_time
+    #     except Exception as e:
+    #         # Log the error but don't show a dialog to avoid spam
+    #         print(f"Drag error: {e}")
 
     def on_canvas_drag(self, event):
         if not self.app.pdf_processor.signature_id:
             return
-        if self.app.is_resizing:
-            dx = event.x - self.app.resize_start_x
-            dy = event.y - self.app.resize_start_y
-            if self.app.resize_corner == 'bottom-right':
-                new_width = max(20, self.app.resize_start_width + dx)
-                new_height = max(20, self.app.resize_start_height + dy)
-            elif self.app.resize_corner == 'bottom-left':
-                new_width = max(20, self.app.resize_start_width - dx)
-                new_height = max(20, self.app.resize_start_height + dy)
-                if new_width != self.app.resize_start_width - dx:
-                    self.app.signature_x = self.app.signature_x + (self.app.resize_start_width - new_width)
-            elif self.app.resize_corner == 'top-right':
-                new_width = max(20, self.app.resize_start_width + dx)
-                new_height = max(20, self.app.resize_start_height - dy)
-                if new_height != self.app.resize_start_height - dy:
-                    self.app.signature_y = self.app.signature_y + (self.app.resize_start_height - new_height)
-            elif self.app.resize_corner == 'top-left':
-                new_width = max(20, self.app.resize_start_width - dx)
-                new_height = max(20, self.app.resize_start_height - dy)
-                if new_width != self.app.resize_start_width - dx:
-                    self.app.signature_x = self.app.signature_x + (self.app.resize_start_width - new_width)
-                if new_height != self.app.resize_start_height - dy:
-                    self.app.signature_y = self.app.signature_y + (self.app.resize_start_height - new_height)
-            if self.app.pdf_processor.original_signature_width > 0:
-                new_scale = new_width / self.app.pdf_processor.original_signature_width
-                self.app.scale.set(round(new_scale, 2))
-        else:
-            if hasattr(self.app, 'drag_start_x'):
-                dx = event.x - self.app.drag_start_x
-                dy = event.y - self.app.drag_start_y
-                if abs(dx) > 2 or abs(dy) > 2:  # Reduced threshold for smoother dragging
-                    new_x = self.app.signature_x + dx
-                    new_y = self.app.signature_y + dy
-                    # Constrain the position within canvas bounds
-                    new_x, new_y = self.constrain_signature_position(new_x, new_y)
-                    # Calculate actual movement
-                    actual_dx = new_x - self.app.signature_x
-                    actual_dy = new_y - self.app.signature_y
-                    self.app.signature_x = new_x
-                    self.app.signature_y = new_y
-                    self.app.canvas.move(self.app.pdf_processor.signature_id, actual_dx, actual_dy)
-                    self.app.drag_start_x = event.x
-                    self.app.drag_start_y = event.y
+        try:
+            canvas = self.app.canvas
+            scroll_margin = 40  # pixels from top/bottom to trigger scroll
+            scroll_speed = 2    # lines per drag event
+
+            if self.app.is_resizing:
+                dx = event.x - self.app.resize_start_x
+                dy = event.y - self.app.resize_start_y
+                if self.app.resize_corner == 'bottom-right':
+                    new_width = max(20, self.app.resize_start_width + dx)
+                    new_height = max(20, self.app.resize_start_height + dy)
+                elif self.app.resize_corner == 'bottom-left':
+                    new_width = max(20, self.app.resize_start_width - dx)
+                    new_height = max(20, self.app.resize_start_height + dy)
+                    if new_width != self.app.resize_start_width - dx:
+                        self.app.signature_x = self.app.signature_x + (self.app.resize_start_width - new_width)
+                elif self.app.resize_corner == 'top-right':
+                    new_width = max(20, self.app.resize_start_width + dx)
+                    new_height = max(20, self.app.resize_start_height - dy)
+                    if new_height != self.app.resize_start_height - dy:
+                        self.app.signature_y = self.app.signature_y + (self.app.resize_start_height - new_height)
+                elif self.app.resize_corner == 'top-left':
+                    new_width = max(20, self.app.resize_start_width - dx)
+                    new_height = max(20, self.app.resize_start_height - dy)
+                    if new_width != self.app.resize_start_width - dx:
+                        self.app.signature_x = self.app.signature_x + (self.app.resize_start_width - new_width)
+                    if new_height != self.app.resize_start_height - dy:
+                        self.app.signature_y = self.app.signature_y + (self.app.resize_start_height - new_height)
+                if self.app.pdf_processor.original_signature_width > 0:
+                    new_scale = new_width / self.app.pdf_processor.original_signature_width
+                    self.app.scale.set(round(new_scale, 2))
+
+                # --- Auto-scroll logic during resizing ---
+                y = event.y
+                if y > canvas.winfo_height() - scroll_margin:
+                    canvas.yview_scroll(scroll_speed, "units")
+                elif y < scroll_margin:
+                    canvas.yview_scroll(-scroll_speed, "units")
+                # --- End auto-scroll logic ---
+
+            else:
+                if hasattr(self.app, 'drag_start_x'):
+                    dx = event.x - self.app.drag_start_x
+                    dy = event.y - self.app.drag_start_y
+                    current_time = time.time() * 1000  # ms
+                    if not hasattr(self.app, 'last_drag_time'):
+                        self.app.last_drag_time = current_time
+                    time_delta = (current_time - self.app.last_drag_time) / 1000.0
+                    if abs(dx) > 2 or abs(dy) > 2 or time_delta > 0.1:
+                        new_x = self.app.signature_x + dx
+                        new_y = self.app.signature_y + dy
+                        new_x, new_y = self.constrain_signature_position(new_x, new_y)
+                        actual_dx = new_x - self.app.signature_x
+                        actual_dy = new_y - self.app.signature_y
+                        self.app.signature_x = new_x
+                        self.app.signature_y = new_y
+                        self.app.canvas.move(self.app.pdf_processor.signature_id, actual_dx, actual_dy)
+                        self.app.drag_start_x = event.x
+                        self.app.drag_start_y = event.y
+                        self.app.last_drag_time = current_time
+
+                    # --- Auto-scroll logic during dragging ---
+                    y = event.y
+                    if y > canvas.winfo_height() - scroll_margin:
+                        canvas.yview_scroll(scroll_speed, "units")
+                    elif y < scroll_margin:
+                        canvas.yview_scroll(-scroll_speed, "units")
+                    # --- End auto-scroll logic ---
+
+        except Exception as e:
+            # Log the error but don't show a dialog to avoid spam
+            print(f"Drag error: {e}")
 
     def on_canvas_release(self, event):
         self.app.is_resizing = False

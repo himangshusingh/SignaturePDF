@@ -110,7 +110,6 @@ class PDFProcessor:
 
         except Exception as e:
             messagebox.showerror("Error", str(e))
-            print(f"Error in load_pdf_page: {str(e)}")
 
     def load_signature(self):
         try:
@@ -141,7 +140,8 @@ class PDFProcessor:
             self._force_reload = False
 
         except Exception as e:
-            messagebox.showerror("Error", str(e))
+            # messagebox.showerror("Error", str(e))
+            print(f"Error in load_signature: {str(e)}")
 
     def force_load_signature(self):
         self._force_reload = True
@@ -324,6 +324,30 @@ class PDFProcessor:
 
     def on_scale_change(self, *args):
         if self.app.signature_path.get() and os.path.exists(self.app.signature_path.get()):
+            # --- Begin anchor logic ---
+            # Get old and new scale
+            old_scale = self.last_display_scale or self.app.scale.get()
+            new_scale = self.app.scale.get()
+            if self.signature_image:
+                old_width = self.original_signature_width * old_scale
+                old_height = self.original_signature_height * old_scale
+                new_width = self.original_signature_width * new_scale
+                new_height = self.original_signature_height * new_scale
+
+                # Calculate center before scaling
+                center_x = self.app.signature_x + old_width / 2
+                center_y = self.app.signature_y + old_height / 2
+
+                # Update signature_x and signature_y to keep center fixed
+                self.app.signature_x = int(center_x - new_width / 2)
+                self.app.signature_y = int(center_y - new_height / 2)
+
+                # Optionally, constrain within page
+                self.app.signature_x, self.app.signature_y = self.app.gui.constrain_signature_position(
+                    self.app.signature_x, self.app.signature_y
+                )
+            # --- End anchor logic ---
+
             self.load_signature()
 
     def __del__(self):
