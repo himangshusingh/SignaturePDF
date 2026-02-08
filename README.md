@@ -55,3 +55,5 @@ Notes
 - Ensure the signature image is in PNG or JPEG format with a transparent background for best results.
 - Page numbers are 0-indexed in the application.
 - The output PDF will be saved in the specified folder with a default filename based on the input PDF.
+
+---
