@@ -1,396 +1,411 @@
-import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
 import os
-import time
+from PyQt6.QtWidgets import (
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
+    QLineEdit, QPushButton, QFileDialog, QComboBox, QSlider, 
+    QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QMessageBox,
+    QGroupBox, QScrollArea, QSplitter
+)
+from PyQt6.QtCore import Qt, pyqtSignal, QPointF
+from PyQt6.QtGui import QPixmap, QImage
+from PIL.ImageQt import ImageQt
 
-class SignaturePDFGUI:
-    def __init__(self, app):
-        self.app = app
-        self.root = app.root
-        self.setup_gui()
-        self.bind_events()
+from pdf_processor import PDFProcessor
+from utils import parse_page_ranges
 
-    def setup_gui(self):
-        top_frame = tk.Frame(self.root)
-        top_frame.pack(pady=10, fill=tk.X, padx=10)
+class MovablePixmapItem(QGraphicsPixmapItem):
+    def __init__(self, pixmap, parent=None):
+        super().__init__(pixmap, parent)
+        self.setFlag(QGraphicsPixmapItem.GraphicsItemFlag.ItemIsMovable, True)
+        self.setFlag(QGraphicsPixmapItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
 
-        tk.Label(top_frame, text="Input PDF:").grid(row=0, column=0, padx=5, pady=5, sticky="e")
-        tk.Entry(top_frame, textvariable=self.app.input_pdf_path, width=40).grid(row=0, column=1, padx=5, pady=5)
-        tk.Button(top_frame, text="Browse", command=self.browse_pdf).grid(row=0, column=2, padx=5, pady=5)
+class SignaturePDFGUI(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Signature PDF Tool - PyQt6")
+        self.resize(1024, 768)
+        
+        self.pdf_processor = PDFProcessor()
+        
+        # State variables
+        self.input_pdf_path = ""
+        self.signature_path = ""
+        self.output_pdf_path = os.path.join(os.getcwd(), "output.pdf")
+        
+        self.saved_positions = {}  # page_num (int): {'x': float, 'y': float, 'scale': float}
+        self.current_page = 0
+        self.signature_scale = 0.5
+        
+        self.setup_ui()
 
-        tk.Label(top_frame, text="Signature Image:").grid(row=1, column=0, padx=5, pady=5, sticky="e")
-        tk.Entry(top_frame, textvariable=self.app.signature_path, width=40).grid(row=1, column=1, padx=5, pady=5)
-        tk.Button(top_frame, text="Browse", command=self.browse_image).grid(row=1, column=2, padx=5, pady=5)
+    def setup_ui(self):
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        main_layout = QHBoxLayout(central_widget)
+        
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        main_layout.addWidget(splitter)
+        
+        # Left Panel - Controls
+        controls_widget = QWidget()
+        controls_layout = QVBoxLayout(controls_widget)
+        controls_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        
+        # 1. File Selection Group
+        file_group = QGroupBox("File Selection")
+        file_layout = QVBoxLayout()
+        
+        self.pdf_input_edit = QLineEdit()
+        self.pdf_input_edit.setReadOnly(True)
+        btn_browse_pdf = QPushButton("Browse PDF")
+        btn_browse_pdf.clicked.connect(self.browse_pdf)
+        pdf_hlayout = QHBoxLayout()
+        pdf_hlayout.addWidget(self.pdf_input_edit)
+        pdf_hlayout.addWidget(btn_browse_pdf)
+        file_layout.addLayout(pdf_hlayout)
+        
+        self.sig_input_edit = QLineEdit()
+        self.sig_input_edit.setReadOnly(True)
+        btn_browse_sig = QPushButton("Browse Signature")
+        btn_browse_sig.clicked.connect(self.browse_signature)
+        sig_hlayout = QHBoxLayout()
+        sig_hlayout.addWidget(self.sig_input_edit)
+        sig_hlayout.addWidget(btn_browse_sig)
+        file_layout.addLayout(sig_hlayout)
+        
+        self.out_input_edit = QLineEdit(self.output_pdf_path)
+        btn_browse_out = QPushButton("Browse Output")
+        btn_browse_out.clicked.connect(self.browse_output)
+        out_hlayout = QHBoxLayout()
+        out_hlayout.addWidget(self.out_input_edit)
+        out_hlayout.addWidget(btn_browse_out)
+        file_layout.addLayout(out_hlayout)
+        
+        file_group.setLayout(file_layout)
+        controls_layout.addWidget(file_group)
+        
+        # 2. Page & Signature Controls
+        page_group = QGroupBox("Page & Signature")
+        page_layout = QVBoxLayout()
+        
+        page_hlayout = QHBoxLayout()
+        page_hlayout.addWidget(QLabel("Page:"))
+        self.page_combo = QComboBox()
+        self.page_combo.currentIndexChanged.connect(self.on_page_changed)
+        page_hlayout.addWidget(self.page_combo)
+        page_layout.addLayout(page_hlayout)
+        
+        scale_hlayout = QHBoxLayout()
+        scale_hlayout.addWidget(QLabel("Signature Scale:"))
+        self.scale_slider = QSlider(Qt.Orientation.Horizontal)
+        self.scale_slider.setMinimum(10)
+        self.scale_slider.setMaximum(200)
+        self.scale_slider.setValue(int(self.signature_scale * 100))
+        self.scale_slider.valueChanged.connect(self.on_scale_changed)
+        scale_hlayout.addWidget(self.scale_slider)
+        self.scale_label = QLabel(f"{self.signature_scale:.2f}")
+        scale_hlayout.addWidget(self.scale_label)
+        page_layout.addLayout(scale_hlayout)
+        
+        btn_save_pos = QPushButton("Save Position for Current Page")
+        btn_save_pos.clicked.connect(self.save_position)
+        page_layout.addWidget(btn_save_pos)
+        
+        btn_clear_pos = QPushButton("Clear Position for Current Page")
+        btn_clear_pos.clicked.connect(self.clear_position)
+        page_layout.addWidget(btn_clear_pos)
+        
+        self.status_label = QLabel("Saved Pages: None")
+        self.status_label.setWordWrap(True)
+        page_layout.addWidget(self.status_label)
+        
+        page_group.setLayout(page_layout)
+        controls_layout.addWidget(page_group)
+        
+        # 3. Processing Group
+        process_group = QGroupBox("Process PDF")
+        process_layout = QVBoxLayout()
+        
+        btn_process_current = QPushButton("Process Current Page")
+        btn_process_current.clicked.connect(self.process_current_page)
+        process_layout.addWidget(btn_process_current)
+        
+        btn_process_all = QPushButton("Process All Placed Pages")
+        btn_process_all.clicked.connect(self.process_all_placed_pages)
+        process_layout.addWidget(btn_process_all)
+        
+        range_hlayout = QHBoxLayout()
+        self.range_edit = QLineEdit()
+        self.range_edit.setPlaceholderText("e.g. 1,3,5-7")
+        btn_process_range = QPushButton("Process Range")
+        btn_process_range.clicked.connect(self.process_range)
+        range_hlayout.addWidget(self.range_edit)
+        range_hlayout.addWidget(btn_process_range)
+        process_layout.addLayout(range_hlayout)
+        
+        process_group.setLayout(process_layout)
+        controls_layout.addWidget(process_group)
+        
+        # Add stretch to keep things at the top
+        controls_layout.addStretch()
+        
+        # Right Panel - PDF Viewer
+        self.scene = QGraphicsScene()
+        self.view = QGraphicsView(self.scene)
+        self.view.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+        
+        # Add to splitter
+        splitter.addWidget(controls_widget)
+        splitter.addWidget(self.view)
+        splitter.setSizes([300, 724])
 
-        tk.Label(top_frame, text="Output Folder:").grid(row=2, column=0, padx=5, pady=5, sticky="e")
-        tk.Entry(top_frame, textvariable=self.app.output_pdf_path, width=40).grid(row=2, column=1, padx=5, pady=5)
-        tk.Button(top_frame, text="Browse", command=self.browse_output).grid(row=2, column=2, padx=5, pady=5)
-
-        tk.Label(top_frame, text="Select Page:").grid(row=3, column=0, padx=5, pady=5, sticky="e")
-        self.page_dropdown = ttk.Combobox(top_frame, textvariable=self.app.page_num, state="readonly", width=10)
-        self.page_dropdown.grid(row=3, column=1, padx=5, pady=5, sticky="w")
-        self.page_dropdown.bind("<<ComboboxSelected>>", self.app.pdf_processor.load_pdf_page)
-
-        tk.Button(top_frame, text="Save Position", command=self.save_signature_position, bg="lightgreen").grid(row=3, column=2, padx=5, pady=5)
-        tk.Button(top_frame, text="Clear Position", command=self.clear_signature_position, bg="lightcoral").grid(row=3, column=3, padx=5, pady=5)
-
-        tk.Label(top_frame, text="Signature Scale:").grid(row=4, column=0, padx=5, pady=5, sticky="e")
-        tk.Scale(top_frame, variable=self.app.scale, from_=0.1, to=2.0, resolution=0.1, orient=tk.HORIZONTAL, length=200).grid(row=4, column=1, padx=5, pady=5)
-
-        tk.Button(top_frame, text="Save Single Page", command=self.app.pdf_processor.process_single_page).grid(row=4, column=2, padx=5, pady=5)
-        tk.Button(top_frame, text="Save All Positioned", command=self.app.pdf_processor.process_all_positioned_pages, bg="lightblue").grid(row=4, column=3, padx=5, pady=5)
-
-        self.status_label = tk.Label(top_frame, text="No positions saved", font=("Arial", 9), fg="gray")
-        self.status_label.grid(row=5, column=0, columnspan=2, pady=2, sticky="w")
-
-        instructions = tk.Label(top_frame, text="Instructions: 1) Select page, position signature, click 'Save Position' 2) Repeat for other pages 3) Click 'Save All Positioned'", 
-                               font=("Arial", 9), fg="blue")
-        instructions.grid(row=6, column=0, columnspan=4, pady=5)
-
-        canvas_frame = tk.Frame(self.root)
-        canvas_frame.pack(pady=10)
-
-        self.scrollbar = tk.Scrollbar(canvas_frame, orient=tk.VERTICAL)
-        self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-        self.app.canvas = tk.Canvas(canvas_frame, width=self.app.canvas_width, height=self.app.canvas_height, bg="white", yscrollcommand=self.scrollbar.set)
-        self.app.canvas.pack(side=tk.LEFT)
-
-        self.scrollbar.config(command=self.app.canvas.yview)
-        self.app.canvas.bind("<Configure>", self.app.pdf_processor.update_scroll_region)
-
-    def bind_events(self):
-        self.app.canvas.bind("<Button-1>", self.on_canvas_click)
-        self.app.canvas.bind("<B1-Motion>", self.on_canvas_drag)
-        self.app.canvas.bind("<ButtonRelease-1>", self.on_canvas_release)
-        self.app.canvas.bind("<Motion>", self.on_canvas_motion)
-        self.app.scale.trace('w', self.app.pdf_processor.on_scale_change)
+        self.pdf_background_item = None
+        self.signature_item = None
+        self.original_sig_pixmap = None
 
     def browse_pdf(self):
-        file = filedialog.askopenfilename(filetypes=[("PDF Files", "*.pdf")])
-        if file:
-            self.app.input_pdf_path.set(file)
-            self.app.pdf_processor.load_pdf()
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select PDF", "", "PDF Files (*.pdf)")
+        if file_path:
+            self.pdf_input_edit.setText(file_path)
+            self.input_pdf_path = file_path
+            try:
+                page_count = self.pdf_processor.load_pdf(file_path)
+                self.page_combo.blockSignals(True)
+                self.page_combo.clear()
+                self.page_combo.addItems([str(i) for i in range(page_count)])
+                self.page_combo.blockSignals(False)
+                self.saved_positions.clear()
+                self.update_status_label()
+                self.current_page = 0
+                self.load_page()
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to load PDF: {str(e)}")
 
-    def browse_image(self):
-        file = filedialog.askopenfilename(filetypes=[("Image Files", "*.png;*.jpg;*.jpeg")])
-        if file:
-            self.app.signature_path.set(file)
-            self.app.pdf_processor.last_signature_path = None
-            self.app.pdf_processor.last_display_scale = None
-            self.app.pdf_processor.load_signature()
+    def browse_signature(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select Signature Image", "", "Image Files (*.png *.jpg *.jpeg)")
+        if file_path:
+            self.sig_input_edit.setText(file_path)
+            self.signature_path = file_path
+            self.original_sig_pixmap = QPixmap(file_path)
+            self.load_signature_item()
 
     def browse_output(self):
-        folder = filedialog.askdirectory(title="Select Output Folder")
-        if folder:
-            input_pdf = self.app.input_pdf_path.get()
-            if input_pdf and os.path.exists(input_pdf):
-                default_filename = os.path.splitext(os.path.basename(input_pdf))[0] + "_signed.pdf"
-            else:
-                default_filename = "output_signed.pdf"
-            output_path = os.path.join(folder, default_filename)
-            self.app.output_pdf_path.set(output_path)
+        file_path, _ = QFileDialog.getSaveFileName(self, "Select Output PDF", self.output_pdf_path, "PDF Files (*.pdf)")
+        if file_path:
+            self.output_pdf_path = file_path
+            self.out_input_edit.setText(file_path)
 
-    def save_signature_position(self):
+    def load_page(self):
+        if not self.input_pdf_path:
+            return
+            
         try:
-            if not self.app.signature_path.get() or not os.path.exists(self.app.signature_path.get()):
-                messagebox.showwarning("Warning", "Please select a signature image first.")
-                return
+            pil_img, self.orig_pdf_width_pts, self.orig_pdf_height_pts, self.dpi_scale = self.pdf_processor.get_page_image(self.current_page, self.input_pdf_path)
             
-            current_page = int(self.app.page_num.get())
-            current_scale = self.app.scale.get()
+            # Convert PIL Image to QPixmap
+            qimage = ImageQt(pil_img)
+            pixmap = QPixmap.fromImage(qimage)
             
-            self.app.signature_positions[current_page] = (self.app.signature_x, self.app.signature_y, current_scale)
+            if self.pdf_background_item:
+                self.scene.removeItem(self.pdf_background_item)
             
-            self.update_status_label()
-            messagebox.showinfo("Success", f"Position saved for page {current_page}")
-            print(f"Saved position for page {current_page}: ({self.app.signature_x}, {self.app.signature_y}, scale: {current_scale})")
+            self.pdf_background_item = self.scene.addPixmap(pixmap)
+            self.pdf_background_item.setZValue(-1) # ensure it stays behind the signature
+            # The scene coordinates are now exactly matched to the rendered image pixels.
+            
+            # Re-add signature if exists
+            if self.original_sig_pixmap and not self.signature_item:
+                self.load_signature_item()
+                
+            # Restore saved position if any
+            if self.current_page in self.saved_positions:
+                pos_data = self.saved_positions[self.current_page]
+                self.scale_slider.setValue(int(pos_data['scale'] * 100))
+                # Map PDF points back to scene pixels
+                # pdf_x = scene_x * (72/150) -> scene_x = pdf_x * (150/72)
+                scene_x = pos_data['x'] * self.dpi_scale
+                
+                # Bottom-left to top-left mapping:
+                # pdf_y = original_pdf_height - (scene_y * 72/150) - (sig_scene_height * 72/150)
+                # scene_y = (original_pdf_height - pdf_y) * (150/72) - sig_scene_height
+                sig_scene_height = self.orig_sig_height_scene * pos_data['scale']
+                scene_y = (self.orig_pdf_height_pts - pos_data['y']) * self.dpi_scale - sig_scene_height
+                
+                self.signature_item.setPos(scene_x, scene_y)
             
         except Exception as e:
-            messagebox.showerror("Error", str(e))
+            QMessageBox.critical(self, "Error", f"Failed to load page: {str(e)}")
 
-    def clear_signature_position(self):
-        try:
-            current_page = int(self.app.page_num.get())
-            if current_page in self.app.signature_positions:
-                del self.app.signature_positions[current_page]
-                self.update_status_label()
-                messagebox.showinfo("Success", f"Position cleared for page {current_page}")
-            else:
-                messagebox.showinfo("Info", f"No saved position for page {current_page}")
-        except Exception as e:
-            messagebox.showerror("Error", str(e))
+    def load_signature_item(self):
+        if not self.original_sig_pixmap:
+            return
+            
+        # If signature_item already exists, grab its position before replacing
+        pos = QPointF(50.0, 50.0)
+        if hasattr(self, 'signature_item') and self.signature_item and self.signature_item.scene():
+            pos = self.signature_item.pos()
+            self.scene.removeItem(self.signature_item)
+            
+        self.signature_item = MovablePixmapItem(self.original_sig_pixmap)
+        
+        # Apply scaling based on DPI scale to make it look visually correct size relative to page
+        base_visual_scale = self.dpi_scale 
+        self.signature_item.setScale(self.signature_scale * base_visual_scale)
+        
+        self.orig_sig_width_scene = self.original_sig_pixmap.width()
+        self.orig_sig_height_scene = self.original_sig_pixmap.height()
+        
+        self.signature_item.setPos(pos)
+        self.scene.addItem(self.signature_item)
 
-    def update_status_label(self):
-        if not self.app.signature_positions:
-            self.status_label.config(text="No positions saved", fg="gray")
-        else:
-            pages = sorted(self.app.signature_positions.keys())
-            self.status_label.config(text=f"Saved positions: Pages {pages}", fg="green")
+    def on_page_changed(self, index):
+        if index >= 0:
+            self.current_page = index
+            self.load_page()
 
-    def get_signature_bounds(self):
-        if not self.app.pdf_processor.signature_image:
+    def on_scale_changed(self, value):
+        self.signature_scale = value / 100.0
+        self.scale_label.setText(f"{self.signature_scale:.2f}")
+        if hasattr(self, 'signature_item') and self.signature_item:
+            base_visual_scale = self.dpi_scale 
+            
+            # Calculate center before scale
+            old_rect = self.signature_item.sceneBoundingRect()
+            center_x = old_rect.center().x()
+            center_y = old_rect.center().y()
+            
+            self.signature_item.setScale(self.signature_scale * base_visual_scale)
+            
+            # Adjust pos to keep center
+            new_rect = self.signature_item.sceneBoundingRect()
+            offset_x = center_x - new_rect.center().x()
+            offset_y = center_y - new_rect.center().y()
+            self.signature_item.setPos(self.signature_item.pos().x() + offset_x, self.signature_item.pos().y() + offset_y)
+
+    def _get_signature_pdf_coordinates_and_size(self):
+        """Calculates current signature PDF coordinate (bottom-left) and size in points."""
+        if not self.signature_item:
             return None
-        width, height = self.app.pdf_processor.signature_image.size
+        
+        # Get scene coordinates of top-left corner
+        scene_pos = self.signature_item.pos()
+        scene_x = scene_pos.x()
+        scene_y = scene_pos.y()
+        
+        scene_width = self.orig_sig_width_scene * self.signature_scale * self.dpi_scale
+        scene_height = self.orig_sig_height_scene * self.signature_scale * self.dpi_scale
+        
+        # Convert scene pixels to PDF points (at 72 DPI)
+        inv_dpi_scale = 1.0 / self.dpi_scale
+        pdf_x = scene_x * inv_dpi_scale
+        pdf_width = scene_width * inv_dpi_scale
+        pdf_height = scene_height * inv_dpi_scale
+        
+        # Convert Y coordinate from top-left mapping to bottom-left mapping
+        pdf_y_top = self.orig_pdf_height_pts - (scene_y * inv_dpi_scale)
+        pdf_y = pdf_y_top - pdf_height
+        
         return {
-            'left': self.app.signature_x,
-            'top': self.app.signature_y,
-            'right': self.app.signature_x + width,
-            'bottom': self.app.signature_y + height,
-            'width': width,
-            'height': height
+            'x': pdf_x,
+            'y': pdf_y,
+            'width': pdf_width,
+            'height': pdf_height,
+            'scale': self.signature_scale
         }
 
-    def constrain_signature_position(self, new_x, new_y):
-        """Ensure the signature stays within the PDF page boundaries"""
-        bounds = self.get_signature_bounds()
-        if not bounds:
-            return new_x, new_y
+    def save_position(self):
+        if not self.signature_item:
+            QMessageBox.warning(self, "Warning", "No signature loaded.")
+            return
+            
+        data = self._get_signature_pdf_coordinates_and_size()
+        if data:
+            self.saved_positions[self.current_page] = data
+            self.update_status_label()
 
-        # Use PDF page dimensions instead of fixed canvas size
-        page_width = self.app.pdf_processor.pdf_image_width
-        page_height = self.app.pdf_processor.pdf_image_height
+    def clear_position(self):
+        if self.current_page in self.saved_positions:
+            del self.saved_positions[self.current_page]
+            self.update_status_label()
 
-        # Constrain x and y to keep the entire signature within the page
-        max_x = max(0, page_width - bounds['width'])
-        max_y = max(0, page_height - bounds['height'])
+    def update_status_label(self):
+        if not self.saved_positions:
+            self.status_label.setText("Saved Pages: None")
+        else:
+            pages = sorted(list(self.saved_positions.keys()))
+            pages_str = ", ".join([str(p) for p in pages])
+            self.status_label.setText(f"Saved Pages: {pages_str}")
+
+    def _build_signature_data_list(self, page_nums, use_current_position=False):
+        """Builds the list of signature objects to pass to processing"""
+        sig_data = []
         
-        new_x = max(0, min(new_x, max_x))
-        new_y = max(0, min(new_y, max_y))
+        if use_current_position:
+            # Overrides saved position for current page if asked
+            data = self._get_signature_pdf_coordinates_and_size()
+            data['page_num'] = self.current_page
+            sig_data.append(data)
         
-        return new_x, new_y
-
-    def get_resize_corner(self, x, y):
-        bounds = self.get_signature_bounds()
-        if not bounds:
-            return None
-        corner_size = 10
-        if (bounds['right'] - corner_size <= x <= bounds['right'] and 
-            bounds['bottom'] - corner_size <= y <= bounds['bottom']):
-            return 'bottom-right'
-        elif (bounds['left'] <= x <= bounds['left'] + corner_size and 
-              bounds['bottom'] - corner_size <= y <= bounds['bottom']):
-            return 'bottom-left'
-        elif (bounds['right'] - corner_size <= x <= bounds['right'] and 
-              bounds['top'] <= y <= bounds['top'] + corner_size):
-            return 'top-right'
-        elif (bounds['left'] <= x <= bounds['left'] + corner_size and 
-              bounds['top'] <= y <= bounds['top'] + corner_size):
-            return 'top-left'
-        return None
-
-    def is_point_in_signature(self, x, y):
-        bounds = self.get_signature_bounds()
-        if not bounds:
-            return False
-        return (bounds['left'] <= x <= bounds['right'] and 
-                bounds['top'] <= y <= bounds['bottom'])
-
-    def on_canvas_motion(self, event):
-        if not hasattr(self, '_motion_timer'):
-            self._motion_timer = None
-        if self._motion_timer:
-            self.app.canvas.after_cancel(self._motion_timer)
-        self._motion_timer = self.app.canvas.after(50, self._update_cursor, event.x, event.y)
-
-    def _update_cursor(self, x, y):
-        if self.app.pdf_processor.signature_id:
-            corner = self.get_resize_corner(x, y)
-            if corner:
-                if corner in ['top-left', 'bottom-right']:
-                    self.app.canvas.config(cursor="size_nw_se")
-                else:
-                    self.app.canvas.config(cursor="size_ne_sw")
-            elif self.is_point_in_signature(x, y):
-                self.app.canvas.config(cursor="fleur")
+        for p in page_nums:
+            if p == self.current_page and use_current_position:
+                continue
+            if p in self.saved_positions:
+                data = dict(self.saved_positions[p])
+                data['page_num'] = p
+                sig_data.append(data)
             else:
-                self.app.canvas.config(cursor="")
-        self._motion_timer = None
+                # If a page is requested but no position is saved, we use the current position on the current page as default mapping?
+                # Actually, the original tool just applied the current (x,y,scale) for all requested pages if using bulk add.
+                data = self._get_signature_pdf_coordinates_and_size()
+                if data:
+                    data['page_num'] = p
+                    sig_data.append(data)
+                
+        return sig_data
 
-    def on_canvas_click(self, event):
-        if not self.app.pdf_processor.signature_id:
+    def process_current_page(self):
+        if not self.input_pdf_path or not self.signature_path:
+            QMessageBox.warning(self, "Warning", "Please select input PDF and signature.")
             return
-        corner = self.get_resize_corner(event.x, event.y)
-        if corner:
-            self.app.is_resizing = True
-            self.app.resize_corner = corner
-            self.app.resize_start_x = event.x
-            self.app.resize_start_y = event.y
-            bounds = self.get_signature_bounds()
-            self.app.resize_start_width = bounds['width']
-            self.app.resize_start_height = bounds['height']
-        elif self.is_point_in_signature(event.x, event.y):
-            self.app.is_resizing = False
-            self.app.drag_start_x = event.x
-            self.app.drag_start_y = event.y
-            self.app.last_drag_time = 0  # Initialize drag time tracking
+            
+        sig_data = self._build_signature_data_list([self.current_page], use_current_position=True)
+        self._execute_processing(sig_data)
 
-    # def on_canvas_drag(self, event):
-    #     if not self.app.pdf_processor.signature_id:
-    #         return
-    #     try:
-    #         if self.app.is_resizing:
-    #             dx = event.x - self.app.resize_start_x
-    #             dy = event.y - self.app.resize_start_y
-    #             if self.app.resize_corner == 'bottom-right':
-    #                 new_width = max(20, self.app.resize_start_width + dx)
-    #                 new_height = max(20, self.app.resize_start_height + dy)
-    #             elif self.app.resize_corner == 'bottom-left':
-    #                 new_width = max(20, self.app.resize_start_width - dx)
-    #                 new_height = max(20, self.app.resize_start_height + dy)
-    #                 if new_width != self.app.resize_start_width - dx:
-    #                     self.app.signature_x = self.app.signature_x + (self.app.resize_start_width - new_width)
-    #             # elif self.app.resize_corner == 'top-right':
-    #             #     new_width = max(20, self.app.resize_start_width + dx)
-    #             #     new_height = max(20, self.app.resize_start_height - dy)
-    #             #     if new_height != self.app.resize_start_height - dy:
-    #             #         self.app.signature_y = self.app.signature_y + (self.app.resize_start_height - new_height)
-    #             # elif self.app.resize_corner == 'top-left':
-    #             #     new_width = max(20, self.app.resize_start_width - dx)
-    #             #     new_height = max(20, self.app.resize_start_height - dy)
-    #             #     if new_width != self.app.resize_start_width - dx:
-    #             #         self.app.signature_x = self.app.signature_x + (self.app.resize_start_width - new_width)
-    #             #     if new_height != self.app.resize_start_height - dy:
-    #             #         self.app.signature_y = self.app.signature_y + (self.app.resize_start_height - new_height)
-    #             elif self.app.resize_corner == 'top-right':
-    #                 new_width = max(20, self.app.resize_start_width + dx)
-    #                 new_height = max(20, self.app.resize_start_height - dy)
-    #                 # Adjust y so the top stays anchored to the cursor
-    #                 if new_height != self.app.resize_start_height - dy:
-    #                     self.app.signature_y = self.app.signature_y + (self.app.resize_start_height - new_height)
-    #             elif self.app.resize_corner == 'top-left':
-    #                 new_width = max(20, self.app.resize_start_width - dx)
-    #                 new_height = max(20, self.app.resize_start_height - dy)
-    #                 if new_width != self.app.resize_start_width - dx:
-    #                     self.app.signature_x = self.app.signature_x + (self.app.resize_start_width - new_width)
-    #                 if new_height != self.app.resize_start_height - dy:
-    #                     self.app.signature_y = self.app.signature_y + (self.app.resize_start_height - new_height)
-    #             if self.app.pdf_processor.original_signature_width > 0:
-    #                 new_scale = new_width / self.app.pdf_processor.original_signature_width
-    #                 self.app.scale.set(round(new_scale, 2))
-    #             # --- Begin auto-scroll logic ---
-    #             canvas = self.app.canvas
-    #             scroll_margin = 40  # pixels from top/bottom to trigger scroll
-    #             scroll_speed = 2    # lines per drag event
-
-    #             y = event.y
-
-    #             # Scroll down if near bottom
-    #             if y > canvas.winfo_height() - scroll_margin:
-    #                 canvas.yview_scroll(scroll_speed, "units")
-    #             # Scroll up if near top
-    #             elif y < scroll_margin:
-    #                 canvas.yview_scroll(-scroll_speed, "units")
-    #             # --- End auto-scroll logic ---
-
-    #             # ...existing drag logic...
-    #             if self.app.is_resizing:
-    #                 # resizing code...
-    #                 pass
-    #         else:
-    #             if hasattr(self.app, 'drag_start_x'):
-    #                 dx = event.x - self.app.drag_start_x
-    #                 dy = event.y - self.app.drag_start_y
-    #                 # Only move if significant movement since last drag
-    #                 # current_time = tk.Tk().winfo_fpixels('1i')  # Use Tkinter to get current time in milliseconds
-    #                 current_time = time.time() * 1000  # Get current time in milliseconds
-    #                 if not hasattr(self.app, 'last_drag_time'):
-    #                     self.app.last_drag_time = current_time
-    #                 time_delta = (current_time - self.app.last_drag_time) / 1000.0  # Time since last drag in seconds
-    #                 if abs(dx) > 2 or abs(dy) > 2 or time_delta > 0.1:  # Reduced threshold and time check
-    #                     new_x = self.app.signature_x + dx
-    #                     new_y = self.app.signature_y + dy
-    #                     # Constrain the position within page bounds
-    #                     new_x, new_y = self.constrain_signature_position(new_x, new_y)
-    #                     # Calculate actual movement
-    #                     actual_dx = new_x - self.app.signature_x
-    #                     actual_dy = new_y - self.app.signature_y
-    #                     self.app.signature_x = new_x
-    #                     self.app.signature_y = new_y
-    #                     self.app.canvas.move(self.app.pdf_processor.signature_id, actual_dx, actual_dy)
-    #                     self.app.drag_start_x = event.x
-    #                     self.app.drag_start_y = event.y
-    #                     self.app.last_drag_time = current_time
-    #     except Exception as e:
-    #         # Log the error but don't show a dialog to avoid spam
-    #         print(f"Drag error: {e}")
-
-    def on_canvas_drag(self, event):
-        if not self.app.pdf_processor.signature_id:
+    def process_all_placed_pages(self):
+        if not self.saved_positions:
+            QMessageBox.warning(self, "Warning", "No saved positions. Click 'Save Position' for pages first.")
             return
+            
+        sig_data = self._build_signature_data_list(list(self.saved_positions.keys()), use_current_position=False)
+        self._execute_processing(sig_data)
+
+    def process_range(self):
+        range_str = self.range_edit.text()
+        if not range_str:
+            QMessageBox.warning(self, "Warning", "Please enter a page range.")
+            return
+            
         try:
-            canvas = self.app.canvas
-            scroll_margin = 40  # pixels from top/bottom to trigger scroll
-            scroll_speed = 2    # lines per drag event
+            pages = parse_page_ranges(range_str)
+        except ValueError as e:
+            QMessageBox.warning(self, "Warning", str(e))
+            return
+            
+        sig_data = self._build_signature_data_list(pages, use_current_position=True)
+        self._execute_processing(sig_data)
 
-            if self.app.is_resizing:
-                dx = event.x - self.app.resize_start_x
-                dy = event.y - self.app.resize_start_y
-                if self.app.resize_corner == 'bottom-right':
-                    new_width = max(20, self.app.resize_start_width + dx)
-                    new_height = max(20, self.app.resize_start_height + dy)
-                elif self.app.resize_corner == 'bottom-left':
-                    new_width = max(20, self.app.resize_start_width - dx)
-                    new_height = max(20, self.app.resize_start_height + dy)
-                    if new_width != self.app.resize_start_width - dx:
-                        self.app.signature_x = self.app.signature_x + (self.app.resize_start_width - new_width)
-                elif self.app.resize_corner == 'top-right':
-                    new_width = max(20, self.app.resize_start_width + dx)
-                    new_height = max(20, self.app.resize_start_height - dy)
-                    if new_height != self.app.resize_start_height - dy:
-                        self.app.signature_y = self.app.signature_y + (self.app.resize_start_height - new_height)
-                elif self.app.resize_corner == 'top-left':
-                    new_width = max(20, self.app.resize_start_width - dx)
-                    new_height = max(20, self.app.resize_start_height - dy)
-                    if new_width != self.app.resize_start_width - dx:
-                        self.app.signature_x = self.app.signature_x + (self.app.resize_start_width - new_width)
-                    if new_height != self.app.resize_start_height - dy:
-                        self.app.signature_y = self.app.signature_y + (self.app.resize_start_height - new_height)
-                if self.app.pdf_processor.original_signature_width > 0:
-                    new_scale = new_width / self.app.pdf_processor.original_signature_width
-                    self.app.scale.set(round(new_scale, 2))
-
-                # --- Auto-scroll logic during resizing ---
-                y = event.y
-                if y > canvas.winfo_height() - scroll_margin:
-                    canvas.yview_scroll(scroll_speed, "units")
-                elif y < scroll_margin:
-                    canvas.yview_scroll(-scroll_speed, "units")
-                # --- End auto-scroll logic ---
-
-            else:
-                if hasattr(self.app, 'drag_start_x'):
-                    dx = event.x - self.app.drag_start_x
-                    dy = event.y - self.app.drag_start_y
-                    current_time = time.time() * 1000  # ms
-                    if not hasattr(self.app, 'last_drag_time'):
-                        self.app.last_drag_time = current_time
-                    time_delta = (current_time - self.app.last_drag_time) / 1000.0
-                    if abs(dx) > 2 or abs(dy) > 2 or time_delta > 0.1:
-                        new_x = self.app.signature_x + dx
-                        new_y = self.app.signature_y + dy
-                        new_x, new_y = self.constrain_signature_position(new_x, new_y)
-                        actual_dx = new_x - self.app.signature_x
-                        actual_dy = new_y - self.app.signature_y
-                        self.app.signature_x = new_x
-                        self.app.signature_y = new_y
-                        self.app.canvas.move(self.app.pdf_processor.signature_id, actual_dx, actual_dy)
-                        self.app.drag_start_x = event.x
-                        self.app.drag_start_y = event.y
-                        self.app.last_drag_time = current_time
-
-                    # --- Auto-scroll logic during dragging ---
-                    y = event.y
-                    if y > canvas.winfo_height() - scroll_margin:
-                        canvas.yview_scroll(scroll_speed, "units")
-                    elif y < scroll_margin:
-                        canvas.yview_scroll(-scroll_speed, "units")
-                    # --- End auto-scroll logic ---
-
+    def _execute_processing(self, sig_data):
+        if not sig_data:
+            QMessageBox.warning(self, "Warning", "No valid signature operations generated.")
+            return
+            
+        try:
+            self.output_pdf_path = self.out_input_edit.text()
+            self.pdf_processor.add_signatures_to_pdf(
+                self.input_pdf_path, 
+                self.signature_path, 
+                self.output_pdf_path, 
+                sig_data
+            )
+            QMessageBox.information(self, "Success", f"Saved signed PDF to:\n{self.output_pdf_path}")
         except Exception as e:
-            # Log the error but don't show a dialog to avoid spam
-            print(f"Drag error: {e}")
-
-    def on_canvas_release(self, event):
-        self.app.is_resizing = False
-        self.app.resize_corner = None
+            QMessageBox.critical(self, "Error", f"Failed to process PDF: {str(e)}")

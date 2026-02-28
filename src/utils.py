@@ -18,17 +18,17 @@ def parse_page_ranges(page_string):
     except ValueError:
         raise ValueError("Invalid page format. Use format like '1,3,5-7'")
 
-def canvas_to_pdf_coordinates(app, canvas_x, canvas_y):
-    pdf_image_x = canvas_x / app.pdf_processor.canvas_scale
-    pdf_image_y = canvas_y / app.pdf_processor.canvas_scale
+def canvas_to_pdf_coordinates(canvas_x, canvas_y, canvas_scale, original_pdf_height):
+    pdf_image_x = canvas_x / canvas_scale
+    pdf_image_y = canvas_y / canvas_scale
     dpi_scale = 72.0 / 150.0
     pdf_x = pdf_image_x * dpi_scale
-    pdf_y = app.pdf_processor.original_pdf_height - (pdf_image_y * dpi_scale)
+    pdf_y = original_pdf_height - (pdf_image_y * dpi_scale)
     return pdf_x, pdf_y
 
-def canvas_to_pdf_size(app, canvas_width, canvas_height):
-    pdf_image_width = canvas_width / app.pdf_processor.canvas_scale
-    pdf_image_height = canvas_height / app.pdf_processor.canvas_scale
+def canvas_to_pdf_size(canvas_width, canvas_height, canvas_scale):
+    pdf_image_width = canvas_width / canvas_scale
+    pdf_image_height = canvas_height / canvas_scale
     dpi_scale = 72.0 / 150.0
     pdf_width = pdf_image_width * dpi_scale
     pdf_height = pdf_image_height * dpi_scale
