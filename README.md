@@ -30,22 +30,16 @@ Install dependencies:`pip install -r requirements.txt`
 
 Run the application: `python src/main.py`
 
+## Installer
+
+1. Download the latest `.exe` installer from [here](https://github.com/himangshusingh/SignaturePDF/releases) 
+2. Run the installer: `SignaturePDF_Installer.exe` 
 
 #### Follow the GUI instructions:
 - Select a PDF file, signature image, and output folder.
 - Choose a page, position the signature, and save the position.
 - Repeat for other pages if needed.
 - Click "Save Single Page" or "Save All Positioned" to generate the output PDF.
-
-
-
-## Project Structure
-
-- `src/`: Contains the source code.
-- `main.py`: Application entry point.
-- `gui.py`: GUI setup and event handling.
-- `pdf_processor.py`: PDF and image processing logic.
-- `utils.py`: Utility functions for page parsing and coordinate conversion.
 
 
 `requirements.txt`: Lists dependencies.

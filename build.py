@@ -15,11 +15,15 @@ def build_app():
         '--name=SignaturePDF',
         '--noconsole',  # Don't show terminal window
         '--onedir',     # Create a folder instead of a slow one-file exe
+        '--paths=src',
+        '--icon=assets/icon.ico',
+        '--add-data=assets/icon.ico;assets',
+        '--runtime-hook=windows_taskbar_hook.py',
         '--clean'
     ])
     
     print("\n\nBuild Complete!")
-    print("Your application is ready to be zipped and distributed.")
+    print("Now run installer.iss to package the application or run .exe file from the location mentioned below")
     print("Location: dist/SignaturePDF")
 
 if __name__ == "__main__":

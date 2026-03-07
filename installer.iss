@@ -3,22 +3,24 @@
 
 #define MyAppName "SignaturePDF"
 #define MyAppVersion "1.0"
-#define MyAppPublisher "Your Name Here"
+#define MyAppPublisher "Himangshu Singh"
 #define MyAppExeName "SignaturePDF.exe"
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application. Do not use the same AppId value in installers for other applications.
 ; (To generate a new GUID, click Tools | Generate GUID inside the IDE.)
-AppId={{FD5F3D1F-43BB-4F15-B6D2-95BB7B757521}
+AppId={{3bec80a6-cfef-402e-88d6-aa1225598c44}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\{#MyAppName}
 DisableProgramGroupPage=yes
-; Remove the following line to run in administrative install mode (install for all users.)
-PrivilegesRequired=lowest
+; Require administrator install mode to install into Program Files
+PrivilegesRequired=admin
 OutputDir=installer
 OutputBaseFilename=SignaturePDF_Installer
+SetupIconFile=assets\icon.ico
+UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
@@ -27,7 +29,7 @@ WizardStyle=modern
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
 ; IMPORTANT: The path below assumes you have run "python build.py" on Windows and generated the "dist/SignaturePDF" folder.
