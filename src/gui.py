@@ -1,4 +1,5 @@
 import os
+import sys
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QLineEdit, QPushButton, QFileDialog, QComboBox, QSlider, 
@@ -6,11 +7,12 @@ from PyQt6.QtWidgets import (
     QGroupBox, QScrollArea, QSplitter
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QPointF
-from PyQt6.QtGui import QPixmap, QImage
+from PyQt6.QtGui import QPixmap, QImage, QIcon
 from PIL.ImageQt import ImageQt
 
 from pdf_processor import PDFProcessor
 from utils import parse_page_ranges
+from assets import get_icon_path
 
 class MovablePixmapItem(QGraphicsPixmapItem):
     def __init__(self, pixmap, parent=None):
@@ -93,6 +95,11 @@ class SignaturePDFGUI(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Signature PDF Tool - PyQt6")
+        
+        icon_path = get_icon_path()
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
+            
         self.resize(1024, 768)
         
         self.pdf_processor = PDFProcessor()
@@ -100,7 +107,9 @@ class SignaturePDFGUI(QMainWindow):
         # State variables
         self.input_pdf_path = ""
         self.signature_path = ""
-        self.output_pdf_path = os.path.join(os.getcwd(), "output.pdf")
+        
+        desktop_dir = os.path.join(os.path.expanduser('~'), 'Desktop')
+        self.output_pdf_path = os.path.join(desktop_dir, "output.pdf")
         
         self.saved_positions = {}  # page_num (int): {'x': float, 'y': float, 'scale': float}
         self.current_page = 0

@@ -1,16 +1,25 @@
 /assets/*
+!/assets/icon.ico
 /input/*
 /output/*
 /.venv/*
 /.vscode/*
 /poppler-24.08.0/*
 /poppler/*
+
+# Build Artifacts
 /build/*
 /dist/*
 /test/*
-SignaturePDFTool.spec
+/installer/*
+
+# PyInstaller Spec
+*.spec
+
+# Other
 /SignaturePDFTool_Distribution/*
 todo.txt
-signaturepdf.spec
 launch_app.bat
 */__pycache__/*
+*.pyc
+/installer/*
