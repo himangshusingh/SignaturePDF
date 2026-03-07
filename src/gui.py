@@ -17,6 +17,77 @@ class MovablePixmapItem(QGraphicsPixmapItem):
         super().__init__(pixmap, parent)
         self.setFlag(QGraphicsPixmapItem.GraphicsItemFlag.ItemIsMovable, True)
         self.setFlag(QGraphicsPixmapItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
+        
+        from PyQt6.QtCore import QTimer
+        self.scroll_timer = QTimer()
+        self.scroll_timer.timeout.connect(self._do_auto_scroll)
+        self.scroll_timer.setInterval(16) # ~60 fps
+        self.is_dragging = False
+
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+        self.is_dragging = True
+        self.scroll_timer.start()
+
+    def mouseReleaseEvent(self, event):
+        super().mouseReleaseEvent(event)
+        self.is_dragging = False
+        self.scroll_timer.stop()
+
+    def _do_auto_scroll(self):
+        if not self.is_dragging: return
+        
+        scene = self.scene()
+        if not scene: return
+            
+        views = scene.views()
+        if not views: return
+            
+        view = views[0]
+        
+        # Get mouse position mapped to viewport coordinates
+        mouse_pos = view.mapFromGlobal(view.cursor().pos())
+        
+        margin = 40 # px from edge to start scrolling
+        max_speed = 30
+        
+        h_bar = view.horizontalScrollBar()
+        v_bar = view.verticalScrollBar()
+        rect = view.viewport().rect()
+        
+        # Calculate horizontal speed
+        dx = 0
+        if mouse_pos.x() < margin:
+            intensity = 1.0 - max(0, mouse_pos.x()) / margin
+            dx = -int(max_speed * intensity)
+        elif mouse_pos.x() > rect.width() - margin:
+            intensity = 1.0 - max(0, rect.width() - mouse_pos.x()) / margin
+            dx = int(max_speed * intensity)
+            
+        # Calculate vertical speed
+        dy = 0
+        if mouse_pos.y() < margin:
+            intensity = 1.0 - max(0, mouse_pos.y()) / margin
+            dy = -int(max_speed * intensity)
+        elif mouse_pos.y() > rect.height() - margin:
+            intensity = 1.0 - max(0, rect.height() - mouse_pos.y()) / margin
+            dy = int(max_speed * intensity)
+            
+        if dx != 0: h_bar.setValue(h_bar.value() + dx)
+        if dy != 0: v_bar.setValue(v_bar.value() + dy)
+        
+        # If we scrolled, we need to update the item's scene position to stick to the cursor
+        if dx != 0 or dy != 0:
+            scene_pos = view.mapToScene(mouse_pos)
+            # Offset by the item's internal grab offset. We approximate this by assuming
+            # the user grabbed it near its current center, or we just let Qt handle the drag 
+            # delta naturally. To keep it perfectly "snappy", we just let Qt's built-in 
+            # ItemIsMovable handle the actual pos updates while the cursor is moving, but 
+            # since the *view* moved underneath the cursor, we fake a mouse move event 
+            # to Qt so it recalculates.
+            # Easiest way to force snap:
+            item_pos = self.mapFromScene(scene_pos)
+            pass # The built in Qt drag handles offset automatically when QGraphicsView scrolls!
 
 class SignaturePDFGUI(QMainWindow):
     def __init__(self):
@@ -145,6 +216,33 @@ class SignaturePDFGUI(QMainWindow):
         process_group.setLayout(process_layout)
         controls_layout.addWidget(process_group)
         
+        # 4. View Controls
+        view_group = QGroupBox("PDF View Scale")
+        view_layout = QVBoxLayout()
+        
+        btn_fit_width = QPushButton("Fit to Width")
+        btn_fit_width.clicked.connect(self.fit_to_width)
+        view_layout.addWidget(btn_fit_width)
+        
+        btn_fit_page = QPushButton("Fit Page")
+        btn_fit_page.clicked.connect(self.fit_page)
+        view_layout.addWidget(btn_fit_page)
+        
+        zoom_hlayout = QHBoxLayout()
+        zoom_hlayout.addWidget(QLabel("Zoom:"))
+        self.view_zoom_slider = QSlider(Qt.Orientation.Horizontal)
+        self.view_zoom_slider.setMinimum(10)
+        self.view_zoom_slider.setMaximum(200)
+        self.view_zoom_slider.setValue(100)
+        self.view_zoom_slider.valueChanged.connect(self.on_view_zoom_changed)
+        zoom_hlayout.addWidget(self.view_zoom_slider)
+        self.view_zoom_label = QLabel("100%")
+        zoom_hlayout.addWidget(self.view_zoom_label)
+        view_layout.addLayout(zoom_hlayout)
+        
+        view_group.setLayout(view_layout)
+        controls_layout.addWidget(view_group)
+        
         # Add stretch to keep things at the top
         controls_layout.addStretch()
         
@@ -177,8 +275,36 @@ class SignaturePDFGUI(QMainWindow):
                 self.update_status_label()
                 self.current_page = 0
                 self.load_page()
+                # Automatically fit to width when loading a new PDF
+                self.fit_to_width()
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to load PDF: {str(e)}")
+
+    def on_view_zoom_changed(self, value):
+        self.view_zoom_label.setText(f"{value}%")
+        scale_factor = value / 100.0
+        self.view.resetTransform()
+        self.view.scale(scale_factor, scale_factor)
+
+    def fit_to_width(self):
+        if not self.pdf_background_item: return
+        view_width = self.view.viewport().width()
+        scene_width = self.scene.width()
+        if scene_width > 0:
+            scale_factor = (view_width - 20) / scene_width
+            self.view_zoom_slider.setValue(int(scale_factor * 100))
+
+    def fit_page(self):
+        if not self.pdf_background_item: return
+        view_width = self.view.viewport().width()
+        view_height = self.view.viewport().height()
+        scene_width = self.scene.width()
+        scene_height = self.scene.height()
+        if scene_width > 0 and scene_height > 0:
+            scale_w = (view_width - 20) / scene_width
+            scale_h = (view_height - 20) / scene_height
+            scale_factor = min(scale_w, scale_h)
+            self.view_zoom_slider.setValue(int(scale_factor * 100))
 
     def browse_signature(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Select Signature Image", "", "Image Files (*.png *.jpg *.jpeg)")
