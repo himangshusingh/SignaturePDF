@@ -12,11 +12,12 @@ else:
     base_path = os.path.dirname(__file__)
 
 from gui import SignaturePDFGUI
+from config import ensure_app_data_dirs
 
 def main():
+    ensure_app_data_dirs()
     app = QApplication(sys.argv)
     
-    # Enable High-DPI scaling (handled automatically in PyQt6, but good practice to ensure clean styles)
     app.setStyle("Fusion")
     
     window = SignaturePDFGUI()

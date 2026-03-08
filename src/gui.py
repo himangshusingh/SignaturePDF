@@ -4,15 +4,19 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QLineEdit, QPushButton, QFileDialog, QComboBox, QSlider, 
     QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QMessageBox,
-    QGroupBox, QScrollArea, QSplitter
+    QGroupBox, QScrollArea, QSplitter, QCheckBox, QGridLayout, QToolButton, QSizePolicy,
+    QMenu
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QPointF
-from PyQt6.QtGui import QPixmap, QImage, QIcon
+from PyQt6.QtCore import Qt, pyqtSignal, QPointF, QSize
+from PyQt6.QtGui import QPixmap, QImage, QIcon, QAction
 from PIL.ImageQt import ImageQt
 
 from pdf_processor import PDFProcessor
 from utils import parse_page_ranges
 from assets import get_icon_path
+import shutil
+import time
+from config import SIGNATURES_DIR
 
 class MovablePixmapItem(QGraphicsPixmapItem):
     def __init__(self, pixmap, parent=None):
@@ -78,18 +82,10 @@ class MovablePixmapItem(QGraphicsPixmapItem):
         if dx != 0: h_bar.setValue(h_bar.value() + dx)
         if dy != 0: v_bar.setValue(v_bar.value() + dy)
         
-        # If we scrolled, we need to update the item's scene position to stick to the cursor
         if dx != 0 or dy != 0:
             scene_pos = view.mapToScene(mouse_pos)
-            # Offset by the item's internal grab offset. We approximate this by assuming
-            # the user grabbed it near its current center, or we just let Qt handle the drag 
-            # delta naturally. To keep it perfectly "snappy", we just let Qt's built-in 
-            # ItemIsMovable handle the actual pos updates while the cursor is moving, but 
-            # since the *view* moved underneath the cursor, we fake a mouse move event 
-            # to Qt so it recalculates.
-            # Easiest way to force snap:
             item_pos = self.mapFromScene(scene_pos)
-            pass # The built in Qt drag handles offset automatically when QGraphicsView scrolls!
+            pass
 
 class SignaturePDFGUI(QMainWindow):
     def __init__(self):
@@ -152,6 +148,14 @@ class SignaturePDFGUI(QMainWindow):
         sig_hlayout.addWidget(btn_browse_sig)
         file_layout.addLayout(sig_hlayout)
         
+        self.save_sig_checkbox = QCheckBox("Save signature for future use")
+        file_layout.addWidget(self.save_sig_checkbox)
+        
+        self.transparent_checkbox = QCheckBox("Remove Background")
+        file_layout.addWidget(self.transparent_checkbox)
+        self.transparent_checkbox.stateChanged.connect(self.on_transparent_changed)
+
+        
         self.out_input_edit = QLineEdit(self.output_pdf_path)
         btn_browse_out = QPushButton("Browse Output")
         btn_browse_out.clicked.connect(self.browse_output)
@@ -205,18 +209,18 @@ class SignaturePDFGUI(QMainWindow):
         process_group = QGroupBox("Process PDF")
         process_layout = QVBoxLayout()
         
-        btn_process_current = QPushButton("Process Current Page")
+        btn_process_current = QPushButton("Save with current page signed")
         btn_process_current.clicked.connect(self.process_current_page)
         process_layout.addWidget(btn_process_current)
         
-        btn_process_all = QPushButton("Process All Placed Pages")
+        btn_process_all = QPushButton("Save with all placed pages signed")
         btn_process_all.clicked.connect(self.process_all_placed_pages)
         process_layout.addWidget(btn_process_all)
         
         range_hlayout = QHBoxLayout()
         self.range_edit = QLineEdit()
         self.range_edit.setPlaceholderText("e.g. 1,3,5-7")
-        btn_process_range = QPushButton("Process Range")
+        btn_process_range = QPushButton("Save with specified pages signed")
         btn_process_range.clicked.connect(self.process_range)
         range_hlayout.addWidget(self.range_edit)
         range_hlayout.addWidget(btn_process_range)
@@ -252,6 +256,27 @@ class SignaturePDFGUI(QMainWindow):
         view_group.setLayout(view_layout)
         controls_layout.addWidget(view_group)
         
+        # 5. Saved Signatures Group
+        saved_sig_group = QGroupBox("Saved Signatures")
+        saved_sig_layout = QVBoxLayout()
+        
+        self.saved_sigs_scroll = QScrollArea()
+        self.saved_sigs_scroll.setWidgetResizable(True)
+        self.saved_sigs_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.saved_sigs_scroll.setMinimumHeight(150)
+        
+        self.saved_sigs_widget = QWidget()
+        self.saved_sigs_grid = QGridLayout(self.saved_sigs_widget)
+        self.saved_sigs_grid.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.saved_sigs_scroll.setWidget(self.saved_sigs_widget)
+        
+        saved_sig_layout.addWidget(self.saved_sigs_scroll)
+        saved_sig_group.setLayout(saved_sig_layout)
+        controls_layout.addWidget(saved_sig_group)
+        
+        self.save_sig_checkbox.stateChanged.connect(self.on_check_save_signature)
+        self.load_saved_signatures()
+        
         # Add stretch to keep things at the top
         controls_layout.addStretch()
         
@@ -268,6 +293,127 @@ class SignaturePDFGUI(QMainWindow):
         self.pdf_background_item = None
         self.signature_item = None
         self.original_sig_pixmap = None
+        self.current_saved_signature_path = None
+
+    def load_saved_signatures(self):
+        # Clear grid
+        for i in reversed(range(self.saved_sigs_grid.count())): 
+            widget = self.saved_sigs_grid.itemAt(i).widget()
+            if widget:
+                widget.setParent(None)
+                
+        if not os.path.exists(SIGNATURES_DIR):
+            return
+            
+        row, col = 0, 0
+        max_cols = 3
+        
+        for filename in os.listdir(SIGNATURES_DIR):
+            if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+                filepath = os.path.join(SIGNATURES_DIR, filename)
+                btn = QToolButton()
+                icon = QIcon(filepath)
+                btn.setIcon(icon)
+                btn.setIconSize(QSize(60, 60))
+                btn.setToolTip(filename)
+                
+                # Context menu for deletion
+                btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+                btn.customContextMenuRequested.connect(lambda pos, b=btn, fp=filepath: self.show_signature_context_menu(b, pos, fp))
+                
+                # capture filepath
+                btn.clicked.connect(lambda checked, fp=filepath: self.select_saved_signature(fp))
+                
+                self.saved_sigs_grid.addWidget(btn, row, col)
+                col += 1
+                if col >= max_cols:
+                    col = 0
+                    row += 1
+
+    def show_signature_context_menu(self, btn, pos, filepath):
+        menu = QMenu(self)
+        delete_action = QAction("Delete", self)
+        delete_action.triggered.connect(lambda: self.delete_saved_signature(filepath))
+        menu.addAction(delete_action)
+        menu.exec(btn.mapToGlobal(pos))
+        
+    def delete_saved_signature(self, filepath):
+        reply = QMessageBox.question(self, "Confirm Delete", 
+                                    "Are you sure you want to delete this saved signature?",
+                                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                    QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+                self.load_saved_signatures()
+            except Exception as e:
+                QMessageBox.warning(self, "Error", f"Could not delete signature: {e}")
+
+    def select_saved_signature(self, filepath):
+        self.sig_input_edit.setText(filepath)
+        self.signature_path = filepath
+        self.reload_signature()
+        
+        # Lock the checkbox appropriately since this is an already saved signature
+        self.save_sig_checkbox.blockSignals(True)
+        self.save_sig_checkbox.setChecked(True)
+        self.save_sig_checkbox.setEnabled(False)
+        self.save_sig_checkbox.blockSignals(False)
+        
+        self.current_saved_signature_path = filepath
+
+    def on_check_save_signature(self, state):
+        if state == Qt.CheckState.Checked.value and self.signature_path:
+            self.save_current_signature()
+        elif state == Qt.CheckState.Unchecked.value and self.current_saved_signature_path:
+            # Delete it if we just saved it and user changed their mind
+            try:
+                if os.path.exists(self.current_saved_signature_path) and self.current_saved_signature_path.startswith(SIGNATURES_DIR):
+                    os.remove(self.current_saved_signature_path)
+                    self.current_saved_signature_path = None
+                    self.load_saved_signatures()
+            except Exception as e:
+                pass # fail silently if it couldn't be deleted or already gone
+
+    def on_transparent_changed(self, state):
+        self.reload_signature()
+
+    def reload_signature(self):
+        if not hasattr(self, 'signature_path') or not self.signature_path:
+            return
+            
+        if self.transparent_checkbox.isChecked():
+            try:
+                from utils import remove_white_background
+                pil_img = remove_white_background(self.signature_path)
+                qimage = ImageQt(pil_img)
+                self.original_sig_pixmap = QPixmap.fromImage(qimage)
+            except Exception as e:
+                QMessageBox.warning(self, "Error", f"Failed to remove background: {e}")
+                self.original_sig_pixmap = QPixmap(self.signature_path)
+        else:
+            self.original_sig_pixmap = QPixmap(self.signature_path)
+            
+        self.load_signature_item()
+
+    def save_current_signature(self):
+        if not hasattr(self, 'signature_path') or not self.signature_path or self.signature_path.startswith(SIGNATURES_DIR):
+            return
+            
+        filename = f"sig_{int(time.time())}.png"
+        dest_path = os.path.join(SIGNATURES_DIR, filename)
+        try:
+            if self.transparent_checkbox.isChecked():
+                from utils import remove_white_background
+                pil_img = remove_white_background(self.signature_path)
+                pil_img.save(dest_path, "PNG")
+            else:
+                shutil.copy2(self.signature_path, dest_path)
+            self.current_saved_signature_path = dest_path
+            self.load_saved_signatures()
+        except Exception as e:
+            QMessageBox.warning(self, "Warning", f"Failed to save signature: {e}")
 
     def browse_pdf(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Select PDF", "", "PDF Files (*.pdf)")
@@ -320,8 +466,15 @@ class SignaturePDFGUI(QMainWindow):
         if file_path:
             self.sig_input_edit.setText(file_path)
             self.signature_path = file_path
-            self.original_sig_pixmap = QPixmap(file_path)
-            self.load_signature_item()
+            self.current_saved_signature_path = None
+            
+            # Re-enable the checkbox as this is a new browsed signature
+            self.save_sig_checkbox.setEnabled(True)
+            self.save_sig_checkbox.setChecked(False)
+            
+            self.reload_signature()
+            if self.save_sig_checkbox.isChecked():
+                self.save_current_signature()
 
     def browse_output(self):
         file_path, _ = QFileDialog.getSaveFileName(self, "Select Output PDF", self.output_pdf_path, "PDF Files (*.pdf)")
@@ -539,7 +692,8 @@ class SignaturePDFGUI(QMainWindow):
                 self.input_pdf_path, 
                 self.signature_path, 
                 self.output_pdf_path, 
-                sig_data
+                sig_data,
+                flatten=True
             )
             QMessageBox.information(self, "Success", f"Saved signed PDF to:\n{self.output_pdf_path}")
         except Exception as e:

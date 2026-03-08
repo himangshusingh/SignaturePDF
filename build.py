@@ -4,7 +4,6 @@ import os
 import shutil
 
 def build_app():
-    # Clean previous builds
     if os.path.exists('build'): shutil.rmtree('build')
     if os.path.exists('dist'): shutil.rmtree('dist')
 
@@ -13,8 +12,8 @@ def build_app():
     PyInstaller.__main__.run([
         'src/main.py',
         '--name=SignaturePDF',
-        '--noconsole',  # Don't show terminal window
-        '--onedir',     # Create a folder instead of a slow one-file exe
+        '--noconsole',
+        '--onedir',
         '--paths=src',
         '--icon=assets/icon.ico',
         '--add-data=assets/icon.ico;assets',
