@@ -58,11 +58,12 @@ class PDFProcessor:
         self.page_cache[cache_key] = (original_image, original_width, original_height, dpi_scale)
         return self.page_cache[cache_key]
 
-    def add_signatures_to_pdf(self, input_pdf_path, signature_path, output_pdf_path, signature_data, flatten=False):
+    def add_signatures_to_pdf(self, input_pdf_path, output_pdf_path, signature_data, flatten=False):
         """
         Adds signatures directly using PDF point coordinates.
         signature_data: list of dicts with keys:
             - 'page_num': 0-indexed page number
+            - 'path': path to the specific signature image file
             - 'x': x coordinate in PDF points (from bottom-left)
             - 'y': y coordinate in PDF points (from bottom-left)
             - 'width': width in PDF points
@@ -71,8 +72,6 @@ class PDFProcessor:
         start_time = time.time()
         reader = PdfReader(input_pdf_path)
         writer = PdfWriter()
-        
-        sig_img = Image.open(signature_path).convert("RGBA")
         
         # Group signature data by page
         signatures_by_page = {}
@@ -95,11 +94,19 @@ class PDFProcessor:
                 signature_buffer = io.BytesIO()
                 signature_canvas = canvas.Canvas(signature_buffer, pagesize=(page_width, page_height))
                 
-                # Pre-save signature image to buffer to avoid saving multiple times
-                img_buffer = io.BytesIO()
-                sig_img.save(img_buffer, format='PNG')
+                # Pre-save signature images to buffers to avoid loading the same image multiple times per page
+                img_buffers = {}
+                for sig in signatures_by_page[i]:
+                    img_path = sig['path']
+                    if img_path not in img_buffers:
+                        buffer = io.BytesIO()
+                        img = Image.open(img_path).convert("RGBA")
+                        img.save(buffer, format='PNG')
+                        img_buffers[img_path] = buffer
                 
                 for sig in signatures_by_page[i]:
+                    img_path = sig['path']
+                    img_buffer = img_buffers[img_path]
                     img_buffer.seek(0)
                     signature_canvas.drawImage(
                         ImageReader(img_buffer),

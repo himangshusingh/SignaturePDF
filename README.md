@@ -1,4 +1,4 @@
-## Signature PDF Tool
+## SignaturePDF
 A Python application for adding signatures to PDF documents using a graphical interface with drag-and-drop functionality.
 Features
 
@@ -19,9 +19,11 @@ Dependencies listed in requirements.txt
 2. `cd SignaturePDF` 
 
 
-Create a virtual environment and activate it:python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
+Create a virtual environment and activate it:
+```
+python -m venv .venv
+source .venv/bin/activate  # On Windows: venv\Scripts\activate.ps1
+```
 
 Install dependencies:`pip install -r requirements.txt`
 
