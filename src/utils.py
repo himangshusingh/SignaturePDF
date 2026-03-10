@@ -33,3 +33,22 @@ def canvas_to_pdf_size(canvas_width, canvas_height, canvas_scale):
     pdf_width = pdf_image_width * dpi_scale
     pdf_height = pdf_image_height * dpi_scale
     return pdf_width, pdf_height
+
+def remove_white_background(image_path, threshold=220):
+    from PIL import Image
+    try:
+        img = Image.open(image_path).convert("RGBA")
+        data = img.getdata()
+        
+        new_data = []
+        for item in data:
+            if item[0] > threshold and item[1] > threshold and item[2] > threshold:
+                new_data.append((item[0], item[1], item[2], 0))
+            else:
+                new_data.append(item)
+                
+        img.putdata(new_data)
+        return img
+    except Exception as e:
+        print(f"Error removing background: {e}")
+        return Image.open(image_path)

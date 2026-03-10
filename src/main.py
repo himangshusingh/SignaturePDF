@@ -1,5 +1,9 @@
 import sys
 import os
+from ui.main_window import ApplicationGUI
+from ui.styles import get_stylesheet
+from config import ensure_app_data_dirs
+from core.state_manager import global_state
 from PyQt6.QtWidgets import QApplication
 
 # Add path handling for packaged executable
@@ -11,15 +15,14 @@ else:
     # Running in normal Python environment
     base_path = os.path.dirname(__file__)
 
-from gui import SignaturePDFGUI
-
 def main():
+    ensure_app_data_dirs()
     app = QApplication(sys.argv)
     
-    # Enable High-DPI scaling (handled automatically in PyQt6, but good practice to ensure clean styles)
     app.setStyle("Fusion")
+    app.setStyleSheet(get_stylesheet(global_state.is_dark_theme))
     
-    window = SignaturePDFGUI()
+    window = ApplicationGUI()
     window.show()
     
     sys.exit(app.exec())
