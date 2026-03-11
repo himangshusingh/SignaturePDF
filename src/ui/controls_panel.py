@@ -109,24 +109,21 @@ class ControlsPanel(QWidget):
             label.setProperty("class", "field-label")
             vbox.addWidget(label)
             
-            input_box = QWidget()
-            input_box.setProperty("class", "integrated-input")
-            hbox = QHBoxLayout(input_box)
+            hbox = QHBoxLayout()
             hbox.setContentsMargins(0, 0, 0, 0)
-            hbox.setSpacing(0)
+            hbox.setSpacing(8)
             
             line_edit = QLineEdit()
             line_edit.setReadOnly(True)
-            line_edit.setProperty("class", "integrated-lineedit")
             hbox.addWidget(line_edit)
             
             btn = QPushButton(button_text)
-            btn.setProperty("class", "integrated-btn")
+            btn.setProperty("semantic", "primary")
             btn.setIcon(QIcon(os.path.join("assets", "folder.png"))) # Optional: add icon if available
             btn.clicked.connect(on_click)
             hbox.addWidget(btn)
             
-            vbox.addWidget(input_box)
+            vbox.addLayout(hbox)
             return wrapper, line_edit
 
         # 1. PDF File
@@ -142,21 +139,40 @@ class ControlsPanel(QWidget):
         self.out_input_edit.setText(self.output_pdf_path)
         layout.addWidget(out_wrapper)
 
-        # 4. Option Toggles Title
-        options_label = QLabel("Option Toggles:")
-        options_label.setProperty("class", "field-label")
-        layout.addWidget(options_label)
+        # 4. Option Toggles
+        toggles_row = QHBoxLayout()
+        toggles_row.setContentsMargins(0, 0, 0, 0)
+        toggles_row.setSpacing(12)
 
-        # Togles
+        # Toggle 1: Save Signature
+        tog1_container = QWidget()
+        tog1_container.setProperty("class", "toggle-container")
+        tog1_layout = QHBoxLayout(tog1_container)
+        tog1_layout.setContentsMargins(14, 12, 14, 12)
+        tog1_title = QLabel("Save Signature")
+        tog1_title.setStyleSheet("font-size: 12px; font-weight: 600; background: transparent;")
+        tog1_layout.addWidget(tog1_title)
+        tog1_layout.addStretch()
         self.save_sig_checkbox = ToggleSwitch()
-        self.save_sig_checkbox.setText("Save signature for future use")
         self.save_sig_checkbox.toggled.connect(self.save_sig_checked.emit)
-        layout.addWidget(self.save_sig_checkbox)
+        tog1_layout.addWidget(self.save_sig_checkbox)
+        toggles_row.addWidget(tog1_container)
 
+        # Toggle 2: Remove Background
+        tog2_container = QWidget()
+        tog2_container.setProperty("class", "toggle-container")
+        tog2_layout = QHBoxLayout(tog2_container)
+        tog2_layout.setContentsMargins(14, 12, 14, 12)
+        tog2_title = QLabel("Remove Background")
+        tog2_title.setStyleSheet("font-size: 12px; font-weight: 600; background: transparent;")
+        tog2_layout.addWidget(tog2_title)
+        tog2_layout.addStretch()
         self.transparent_checkbox = ToggleSwitch()
-        self.transparent_checkbox.setText("Remove Background")
         self.transparent_checkbox.toggled.connect(self.transparent_checked.emit)
-        layout.addWidget(self.transparent_checkbox)
+        tog2_layout.addWidget(self.transparent_checkbox)
+        toggles_row.addWidget(tog2_container)
+
+        layout.addLayout(toggles_row)
 
         return container
 
@@ -166,64 +182,78 @@ class ControlsPanel(QWidget):
 
         group = QGroupBox("Page & Signature Placement")
         layout = QVBoxLayout()
-        
-        grid = QGridLayout()
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(15)
-        grid.setVerticalSpacing(10)
-        
-        # Row 0: Current Page & Save Position
-        lbl_page = QLabel("Current Page:")
+        layout.setSpacing(14)
+
+        # Top row: Current Page (left) + Pages with positions (right)
+        top_row = QHBoxLayout()
+        top_row.setSpacing(12)
+
+        # Current Page field
+        page_field = QVBoxLayout()
+        page_field.setSpacing(6)
+        lbl_page = QLabel("CURRENT PAGE")
         lbl_page.setProperty("class", "field-label")
-        grid.addWidget(lbl_page, 0, 0)
-
+        page_field.addWidget(lbl_page)
         self.page_combo = QComboBox()
-        self.page_combo.setMinimumWidth(80)
         self.page_combo.currentIndexChanged.connect(self.page_changed.emit)
-        grid.addWidget(self.page_combo, 0, 1)
+        page_field.addWidget(self.page_combo)
+        top_row.addLayout(page_field)
 
-        btn_save_pos = QPushButton("Save Position for current page")
+        # Pages with positions badge
+        badge_field = QVBoxLayout()
+        badge_field.setSpacing(6)
+        lbl_positions = QLabel("PAGES WITH POSITIONS")
+        lbl_positions.setProperty("class", "field-label")
+        badge_field.addWidget(lbl_positions)
+        self.status_label = QLabel("None assigned")
+        self.status_label.setProperty("class", "pages-badge")
+        self.status_label.setWordWrap(True)
+        badge_field.addWidget(self.status_label)
+        top_row.addLayout(badge_field)
+
+        layout.addLayout(top_row)
+
+        # Action buttons row
+        btn_row = QHBoxLayout()
+        btn_row.setContentsMargins(0, 0, 0, 0)
+        btn_row.setSpacing(8)
+
+        btn_save_pos = QPushButton("Save Position for Current Page")
         btn_save_pos.setProperty("semantic", "primary")
         btn_save_pos.clicked.connect(self.save_position_clicked.emit)
-        grid.addWidget(btn_save_pos, 0, 2)
 
-        # Row 1: Scale & Clear Position
-        lbl_scale = QLabel("Signature Scale:")
+        btn_clear_pos = QPushButton("Clear")
+        btn_clear_pos.setProperty("semantic", "danger")
+        btn_clear_pos.clicked.connect(self.clear_position_clicked.emit)
+
+        btn_row.addWidget(btn_save_pos, 1)
+        btn_row.addWidget(btn_clear_pos)
+        layout.addLayout(btn_row)
+
+        # Scale slider
+        scale_group = QVBoxLayout()
+        scale_group.setSpacing(6)
+        lbl_scale = QLabel("SIGNATURE SCALE")
         lbl_scale.setProperty("class", "field-label")
-        grid.addWidget(lbl_scale, 1, 0)
+        scale_group.addWidget(lbl_scale)
 
-        scale_hbox = QHBoxLayout()
+        scale_row = QHBoxLayout()
+        scale_row.setSpacing(12)
         self.scale_slider = QSlider(Qt.Orientation.Horizontal)
         self.scale_slider.setMinimum(10)
         self.scale_slider.setMaximum(200)
         self.scale_slider.setValue(50)
         self.scale_slider.valueChanged.connect(self.on_scale_slider_changed)
-        scale_hbox.addWidget(self.scale_slider)
-        
+        scale_row.addWidget(self.scale_slider)
+
         self.scale_label = QLabel("0.50")
-        scale_hbox.addWidget(self.scale_label)
-        grid.addLayout(scale_hbox, 1, 1)
+        self.scale_label.setProperty("class", "slider-value")
+        scale_row.addWidget(self.scale_label)
+        scale_group.addLayout(scale_row)
 
-        btn_clear_pos = QPushButton("Clear Position")
-        btn_clear_pos.setProperty("semantic", "danger")
-        btn_clear_pos.clicked.connect(self.clear_position_clicked.emit)
-        grid.addWidget(btn_clear_pos, 1, 2)
-        
-        # Grid column stretch so buttons stay right-aligned and inputs don't stretch too much
-        grid.setColumnStretch(1, 1) 
-        grid.setColumnStretch(2, 2)
-
-        layout.addLayout(grid)
-
-        self.status_label = QLabel("Pages with positions: None")
-        self.status_label.setProperty("class", "field-label")
-        self.status_label.setWordWrap(True)
-        # Add some margin top
-        self.status_label.setContentsMargins(0, 10, 0, 0)
-        layout.addWidget(self.status_label)
+        layout.addLayout(scale_group)
 
         group.setLayout(layout)
-
         return group
 
     # ---------------- Processing ---------------- #
@@ -234,38 +264,39 @@ class ControlsPanel(QWidget):
         layout = QVBoxLayout()
         layout.setSpacing(10)
 
-        btn_current = QPushButton("Save with Current Page Signed")
+        btn_row_all = QHBoxLayout()
+        btn_row_all.setContentsMargins(0, 0, 0, 0)
+        btn_row_all.setSpacing(10)
+
+        btn_current = QPushButton("Save Current Page")
         btn_current.setProperty("semantic", "success")
         btn_current.clicked.connect(self.process_current_clicked.emit)
 
-        btn_all = QPushButton("Save with All Placed Pages Signed")
+        btn_all = QPushButton("Save All Pages")
         btn_all.setProperty("semantic", "success")
         btn_all.clicked.connect(self.process_all_clicked.emit)
 
-        layout.addWidget(btn_current)
-        layout.addWidget(btn_all)
+        btn_row_all.addWidget(btn_current)
+        btn_row_all.addWidget(btn_all)
+        layout.addLayout(btn_row_all)
 
-        # Integrated field for Range
-        input_box = QWidget()
-        input_box.setProperty("class", "integrated-input")
-        hbox = QHBoxLayout(input_box)
+        # Specified pages row
+        hbox = QHBoxLayout()
         hbox.setContentsMargins(0, 0, 0, 0)
-        hbox.setSpacing(0)
-        
+        hbox.setSpacing(10)
+
         self.range_edit = QLineEdit()
-        self.range_edit.setPlaceholderText("Specified Pages (e.g., 1,3,5-7)")
-        self.range_edit.setProperty("class", "integrated-lineedit")
+        self.range_edit.setPlaceholderText("Specified pages (e.g. 1, 3, 5-7)")
         hbox.addWidget(self.range_edit)
-        
-        btn_range = QPushButton("Save with Specified Pages Signed")
+
+        btn_range = QPushButton("Save Specified")
         btn_range.setProperty("semantic", "success")
-        btn_range.setProperty("class", "integrated-btn-success")
         btn_range.clicked.connect(
             lambda: self.process_range_clicked.emit(self.range_edit.text())
         )
         hbox.addWidget(btn_range)
-        
-        layout.addWidget(input_box)
+
+        layout.addLayout(hbox)
 
         group.setLayout(layout)
 
@@ -275,33 +306,46 @@ class ControlsPanel(QWidget):
 
     def _create_view_group(self):
 
-        group = QGroupBox("Viewport Controls:")
+        group = QGroupBox("Viewport Controls")
         layout = QVBoxLayout()
+        layout.setSpacing(14)
 
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(10)
         btn_fit_width = QPushButton("Fit to Width")
         btn_fit_width.clicked.connect(self.fit_width_clicked.emit)
 
         btn_fit_page = QPushButton("Fit Page")
         btn_fit_page.clicked.connect(self.fit_page_clicked.emit)
 
-        layout.addWidget(btn_fit_width)
-        layout.addWidget(btn_fit_page)
+        btn_row.addWidget(btn_fit_width)
+        btn_row.addWidget(btn_fit_page)
 
-        row = QHBoxLayout()
-        row.addWidget(QLabel("Zoom:"))
+        layout.addLayout(btn_row)
+
+        # Zoom slider
+        zoom_group = QVBoxLayout()
+        zoom_group.setSpacing(6)
+        lbl_zoom = QLabel("ZOOM")
+        lbl_zoom.setProperty("class", "field-label")
+        zoom_group.addWidget(lbl_zoom)
+
+        zoom_row = QHBoxLayout()
+        zoom_row.setSpacing(12)
 
         self.view_zoom_slider = QSlider(Qt.Orientation.Horizontal)
         self.view_zoom_slider.setMinimum(10)
         self.view_zoom_slider.setMaximum(200)
         self.view_zoom_slider.setValue(100)
         self.view_zoom_slider.valueChanged.connect(self.on_zoom_slider_changed)
-
-        row.addWidget(self.view_zoom_slider)
+        zoom_row.addWidget(self.view_zoom_slider)
 
         self.view_zoom_label = QLabel("100%")
-        row.addWidget(self.view_zoom_label)
+        self.view_zoom_label.setProperty("class", "slider-value")
+        zoom_row.addWidget(self.view_zoom_label)
 
-        layout.addLayout(row)
+        zoom_group.addLayout(zoom_row)
+        layout.addLayout(zoom_group)
 
         self.dark_theme_checkbox = ToggleSwitch()
         self.dark_theme_checkbox.setText("Dark Theme")
@@ -405,10 +449,10 @@ class ControlsPanel(QWidget):
     def update_status_label(self, saved_pages):
 
         if not saved_pages:
-            self.status_label.setText("Saved Pages: None")
+            self.status_label.setText("None assigned")
         else:
             pages = ", ".join(map(str, sorted(saved_pages)))
-            self.status_label.setText(f"Saved Pages: {pages}")
+            self.status_label.setText(f"Pages: {pages}")
 
     # ---------------- Saved signatures ---------------- #
 

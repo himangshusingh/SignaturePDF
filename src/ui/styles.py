@@ -3,14 +3,19 @@ from dataclasses import dataclass
 @dataclass
 class ThemeColors:
     bg_primary: str
-    bg_secondary: str
+    bg_secondary: str   # "surface"
+    surface2: str        # slightly lighter surface
     text_primary: str
-    text_secondary: str
+    text_secondary: str  # "muted"
     accent: str
+    accent2: str         # lighter accent
     accent_hover: str
     accent_pressed: str
+    accent_glow: str     # translucent accent for glows
     border: str
+    border_hover: str
     danger: str
+    danger_dim: str      # translucent danger bg
     danger_hover: str
     danger_pressed: str
     success: str
@@ -18,231 +23,264 @@ class ThemeColors:
     success_pressed: str
 
 DARK_THEME = ThemeColors(
-    bg_primary="#1D1D23",
-    bg_secondary="#25252A",
-    text_primary="#E6E1E5",
-    text_secondary="#A3A3A8",
-    accent="#605DE6",
-    accent_hover="#7C7AFF",
-    accent_pressed="#4441B8",
-    border="#383842",
-    danger="#D93025",
-    danger_hover="#F28B82",
-    danger_pressed="#A50E0E",
-    success="#188C4C",
-    success_hover="#24A15D",
-    success_pressed="#126838"
+    bg_primary="#0c0c10",
+    bg_secondary="#131318",
+    surface2="#1a1a22",
+    text_primary="#e8e6f0",
+    text_secondary="#6b6880",
+    accent="#7c5cfc",
+    accent2="#c084fc",
+    accent_hover="#9b7bff",
+    accent_pressed="#5a3fd4",
+    accent_glow="rgba(124,92,252,0.25)",
+    border="rgba(255,255,255,0.07)",
+    border_hover="rgba(120,100,255,0.4)",
+    danger="#f87171",
+    danger_dim="rgba(248,113,113,0.12)",
+    danger_hover="rgba(248,113,113,0.25)",
+    danger_pressed="#dc2626",
+    success="#34d399",
+    success_hover="rgba(52,211,153,0.2)",
+    success_pressed="#059669"
 )
 
 LIGHT_THEME = ThemeColors(
-    bg_primary="#F3F3F7",
-    bg_secondary="#FFFFFF",
-    text_primary="#1C1B1F",
-    text_secondary="#6E6E6E",
-    accent="#605DE6",
-    accent_hover="#7C7AFF",
-    accent_pressed="#4441B8",
-    border="#D1D1D6",
-    danger="#D93025",
-    danger_hover="#F28B82",
-    danger_pressed="#A50E0E",
-    success="#188C4C",
-    success_hover="#24A15D",
-    success_pressed="#126838"
+    bg_primary="#f4f3f8",
+    bg_secondary="#ffffff",
+    surface2="#f0eff6",
+    text_primary="#1a1825",
+    text_secondary="#9896aa",
+    accent="#7c5cfc",
+    accent2="#9b7bff",
+    accent_hover="#6a4ae0",
+    accent_pressed="#5a3fd4",
+    accent_glow="rgba(124,92,252,0.15)",
+    border="rgba(0,0,0,0.08)",
+    border_hover="rgba(120,100,255,0.3)",
+    danger="#ef4444",
+    danger_dim="rgba(239,68,68,0.1)",
+    danger_hover="rgba(239,68,68,0.2)",
+    danger_pressed="#dc2626",
+    success="#10b981",
+    success_hover="rgba(16,185,129,0.15)",
+    success_pressed="#059669"
 )
 
-# DARK_THEME = ThemeColors(
-#     bg_primary="#121212",
-#     bg_secondary="#1E1E1E",
-#     text_primary="#E5E5E5",
-#     text_secondary="#A3A3A3",
-#     accent="#2DD4BF",
-#     accent_hover="#5EEAD4",
-#     accent_pressed="#14B8A6",
-#     border="#3F3F3F"
-# )
-
-# LIGHT_THEME = ThemeColors(
-#     bg_primary="#FAFAFA",
-#     bg_secondary="#FFFFFF",
-#     text_primary="#1F1F1F",
-#     text_secondary="#6E6E6E",
-#     accent="#0D9488",
-#     accent_hover="#14B8A6",
-#     accent_pressed="#0F766E",
-#     border="#E2E2E2"
-# )
-
-# DARK_THEME = ThemeColors(
-#     bg_primary="#121212",
-#     bg_secondary="#1E1E1E",
-#     text_primary="#E6E1E5",
-#     text_secondary="#B8B3C2",
-#     accent="#BB86FC",
-#     accent_hover="#CF9FFF",
-#     accent_pressed="#9A67EA",
-#     border="#444746"
-# )
-
-# LIGHT_THEME = ThemeColors(
-#     bg_primary="#FAFAFA",
-#     bg_secondary="#FFFFFF",
-#     text_primary="#1C1B1F",
-#     text_secondary="#6E6E6E",
-#     accent="#7F39FB",
-#     accent_hover="#9A67EA",
-#     accent_pressed="#5E2CA5",
-#     border="#E2E2E2"
-# )
 
 def get_stylesheet(is_dark=True):
     colors = DARK_THEME if is_dark else LIGHT_THEME
-    
+
     import os
     from assets import get_resource_path
     check_icon_path = get_resource_path(os.path.join("assets", "check.svg")).replace("\\", "/")
-    
+
     def rgba(hex_str, alpha=0.15):
         h = hex_str.lstrip('#')
-        r = int(h[0:2], 16)
-        g = int(h[2:4], 16)
-        b = int(h[4:6], 16)
-        return f"rgba({r}, {g}, {b}, {alpha})"
-        
+        if len(h) == 6:
+            r = int(h[0:2], 16)
+            g = int(h[2:4], 16)
+            b = int(h[4:6], 16)
+            return f"rgba({r}, {g}, {b}, {alpha})"
+        return hex_str  # already rgba
+
+    # success / danger translucent backgrounds
+    success_bg = rgba(colors.success, 0.12) if colors.success.startswith('#') else colors.success_hover
+    success_border = rgba(colors.success, 0.25) if colors.success.startswith('#') else colors.success
+    danger_bg = colors.danger_dim
+    danger_border = rgba(colors.danger, 0.2) if colors.danger.startswith('#') else colors.danger
+
     return f"""
+/* ==================== BASE ==================== */
 QWidget {{
     background-color: {colors.bg_primary};
     color: {colors.text_primary};
-    font-family: 'Segoe UI', 'San Francisco', sans-serif;
+    font-family: 'Syne', 'Segoe UI', sans-serif;
     font-size: 13px;
 }}
+
+/* ==================== BUTTONS ==================== */
 QPushButton {{
-    background-color: {rgba(colors.accent)};
-    color: {colors.accent};
-    border-radius: 6px;
-    padding: 8px 16px;
-    font-weight: bold;
-    border: 1px solid {colors.accent};
+    background-color: {colors.surface2};
+    color: {colors.text_secondary};
+    border-radius: 10px;
+    padding: 11px 16px;
+    font-family: 'Syne', 'Segoe UI', sans-serif;
+    font-weight: 600;
+    font-size: 12px;
+    border: 1px solid {colors.border};
 }}
 QPushButton:hover {{
-    background-color: {colors.accent};
-    color: {colors.bg_primary};
+    border-color: {colors.border_hover};
+    color: {colors.text_primary};
 }}
 QPushButton:pressed {{
-    background-color: {colors.accent_pressed};
-    border: 1px solid {colors.accent_pressed};
+    background-color: {colors.bg_secondary};
 }}
+
+/* -- Primary (accent) -- */
 QPushButton[semantic="primary"] {{
-    background-color: {rgba(colors.accent)};
-    color: {colors.accent};
-    border: 1px solid {colors.accent};
+    background-color: {colors.accent};
+    color: white;
+    border: none;
 }}
 QPushButton[semantic="primary"]:hover {{
-    background-color: {colors.accent};
-    color: {colors.bg_primary};
+    background-color: {colors.accent_hover};
 }}
 QPushButton[semantic="primary"]:pressed {{
     background-color: {colors.accent_pressed};
-    border: 1px solid {colors.accent_pressed};
 }}
+
+/* -- Danger -- */
 QPushButton[semantic="danger"] {{
-    background-color: {rgba(colors.danger)};
+    background-color: {danger_bg};
     color: {colors.danger};
-    border: 1px solid {colors.danger};
+    border: 1px solid {danger_border};
 }}
 QPushButton[semantic="danger"]:hover {{
-    background-color: {colors.danger};
-    color: {colors.bg_primary};
+    background-color: {colors.danger_hover};
+    border-color: {rgba(colors.danger, 0.4) if colors.danger.startswith('#') else colors.danger};
 }}
 QPushButton[semantic="danger"]:pressed {{
     background-color: {colors.danger_pressed};
-    border: 1px solid {colors.danger_pressed};
+    color: white;
 }}
+
+/* -- Success (export) -- */
 QPushButton[semantic="success"] {{
-    background-color: {rgba(colors.success)};
+    background-color: {success_bg};
     color: {colors.success};
-    border: 1px solid {colors.success};
+    border: 1px solid {success_border};
+    border-radius: 12px;
+    padding: 14px 16px;
 }}
 QPushButton[semantic="success"]:hover {{
-    background-color: {colors.success};
-    color: {colors.bg_primary};
+    background-color: {colors.success_hover};
+    border-color: {rgba(colors.success, 0.5) if colors.success.startswith('#') else colors.success};
 }}
 QPushButton[semantic="success"]:pressed {{
     background-color: {colors.success_pressed};
+    color: white;
     border: 1px solid {colors.success_pressed};
 }}
+
 QPushButton:disabled {{
     background-color: transparent;
     color: {colors.text_secondary};
     border: 1px solid {colors.border};
 }}
+
+/* ==================== CARDS (GroupBox) ==================== */
 QGroupBox {{
+    background-color: {colors.bg_secondary};
     border: 1px solid {colors.border};
-    border-radius: 8px;
-    margin-top: 20px;
+    border-radius: 16px;
+    margin-top: 10px;
+    padding-top: 36px;
 }}
 QGroupBox::title {{
     subcontrol-origin: margin;
-    left: 10px;
-    padding: 0 5px;
-    color: {colors.accent};
-    font-weight: bold;
-}}
-QLineEdit, QComboBox {{
-    background-color: {colors.bg_secondary};
-    border: 1px solid {colors.border};
-    border-radius: 4px;
-    padding: 10px;
+    left: 14px;
+    top: 6px;
+    padding: 8px 12px 8px 12px;
     color: {colors.text_primary};
-    selection-background-color: {colors.accent};
-    selection-color: {colors.bg_primary};
-}}
-.field-label {{
-    color: {colors.text_primary};
+    font-family: 'Syne', 'Segoe UI', sans-serif;
+    font-weight: 600;
     font-size: 13px;
-    margin-bottom: 2px;
+    border-bottom: 1px solid {colors.border};
 }}
-.integrated-input {{
-    background-color: {colors.bg_secondary};
+
+/* ==================== INPUTS ==================== */
+QLineEdit {{
+    background-color: {colors.surface2};
     border: 1px solid {colors.border};
-    border-radius: 8px;
-}}
-.integrated-lineedit {{
-    background-color: transparent;
-    border: none;
-    padding: 10px;
+    border-radius: 10px;
+    padding: 10px 14px;
     color: {colors.text_primary};
+    font-family: 'DM Mono', 'Consolas', monospace;
+    font-size: 12px;
+    selection-background-color: {colors.accent};
+    selection-color: white;
 }}
-.integrated-btn {{
-    background-color: {colors.bg_secondary};
-    border: none;
-    border-left: 1px solid {colors.border};
-    border-top-left-radius: 0;
-    border-bottom-left-radius: 0;
-    border-top-right-radius: 8px;
-    border-bottom-right-radius: 8px;
-    padding: 10px 16px;
-    color: {colors.accent};
-    font-weight: bold;
+QLineEdit:focus {{
+    border-color: {colors.accent};
 }}
-.integrated-btn:hover {{
-    background-color: {colors.accent};
-    color: {colors.bg_secondary};
+
+/* ==================== FIELD LABELS ==================== */
+.field-label {{
+    font-family: 'DM Mono', 'Consolas', monospace;
+    font-size: 10px;
+    color: {colors.text_secondary};
+    padding-bottom: 4px;
+    background-color: transparent;
 }}
-.integrated-btn-success {{
-    background-color: {colors.success};
-    border: none;
-    border-top-left-radius: 0;
-    border-bottom-left-radius: 0;
-    border-top-right-radius: 8px;
-    border-bottom-right-radius: 8px;
-    padding: 10px 16px;
-    color: {colors.bg_primary};
-    font-weight: bold;
+
+/* ==================== COMBOBOX ==================== */
+QComboBox {{
+    background-color: {colors.surface2};
+    border: 1px solid {colors.border};
+    border-radius: 10px;
+    padding: 10px 14px;
+    color: {colors.text_primary};
+    font-family: 'DM Mono', 'Consolas', monospace;
+    font-size: 13px;
+    font-weight: 500;
 }}
-.integrated-btn-success:hover {{
-    background-color: {colors.success_hover};
+QComboBox:hover {{
+    border-color: {colors.accent};
 }}
+QComboBox::drop-down {{
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 25px;
+    border-left-width: 0px;
+}}
+QComboBox::down-arrow {{
+    image: none;
+    border-left: 2px solid {colors.text_secondary};
+    border-bottom: 2px solid {colors.text_secondary};
+    width: 6px;
+    height: 6px;
+    margin-right: 10px;
+    transform: rotate(-45deg);
+}}
+QComboBox QAbstractItemView {{
+    background-color: {colors.surface2};
+    border: 1px solid {colors.border};
+    border-radius: 6px;
+    selection-background-color: {colors.accent_glow};
+    selection-color: {colors.text_primary};
+    padding: 4px;
+    outline: none;
+}}
+QComboBox QAbstractItemView::item {{
+    min-height: 28px;
+    border-radius: 4px;
+    padding-left: 8px;
+}}
+
+/* ==================== TOGGLE CONTAINER ==================== */
+.toggle-container {{
+    background-color: {colors.surface2};
+    border: 1px solid {colors.border};
+    border-radius: 10px;
+    padding: 12px 14px;
+}}
+.toggle-container:hover {{
+    border-color: {colors.border_hover};
+}}
+
+/* ==================== PAGES BADGE ==================== */
+.pages-badge {{
+    background-color: {colors.surface2};
+    border: 1px solid {colors.border};
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-family: 'Consolas', 'SF Mono', monospace;
+    font-size: 11px;
+    color: {colors.text_secondary};
+}}
+
+/* ==================== CHECKBOXES ==================== */
 QCheckBox {{
     spacing: 8px;
 }}
@@ -251,7 +289,7 @@ QCheckBox::indicator {{
     height: 18px;
     border-radius: 4px;
     border: 1px solid {colors.border};
-    background-color: {colors.bg_secondary};
+    background-color: {colors.surface2};
 }}
 QCheckBox::indicator:hover {{
     border: 1px solid {colors.accent};
@@ -261,33 +299,42 @@ QCheckBox::indicator:checked {{
     border: 1px solid {colors.accent};
     image: url("{check_icon_path}");
 }}
+
+/* ==================== SLIDERS ==================== */
+QSlider {{
+    background: transparent;
+    min-height: 24px;
+}}
 QSlider::groove:horizontal {{
-    border: 1px solid {colors.border};
-    height: 6px;
-    background: {colors.bg_secondary};
-    margin: 2px 0;
-    border-radius: 3px;
+    border: none;
+    height: 4px;
+    background: {colors.surface2};
+    border-radius: 2px;
+    margin: 0px;
 }}
 QSlider::handle:horizontal {{
     background: {colors.accent};
-    border: none;
+    border: 2px solid rgba(255,255,255,0.2);
     width: 16px;
-    margin: -5px 0;
-    border-radius: 8px;
+    height: 16px;
+    margin: -7px 0;
+    border-radius: 9px;
 }}
 QSlider::handle:horizontal:hover {{
     background: {colors.accent_hover};
 }}
+
+/* ==================== SCROLLBARS ==================== */
 QScrollBar:vertical {{
     border: none;
     background: {colors.bg_primary};
-    width: 10px;
-    margin: 0px 0px 0px 0px;
+    width: 8px;
+    margin: 0px;
 }}
 QScrollBar::handle:vertical {{
     background: {colors.border};
     min-height: 20px;
-    border-radius: 5px;
+    border-radius: 4px;
 }}
 QScrollBar::handle:vertical:hover {{
     background: {colors.text_secondary};
@@ -298,13 +345,13 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
 QScrollBar:horizontal {{
     border: none;
     background: {colors.bg_primary};
-    height: 10px;
-    margin: 0px 0px 0px 0px;
+    height: 8px;
+    margin: 0px;
 }}
 QScrollBar::handle:horizontal {{
     background: {colors.border};
     min-width: 20px;
-    border-radius: 5px;
+    border-radius: 4px;
 }}
 QScrollBar::handle:horizontal:hover {{
     background: {colors.text_secondary};
@@ -312,29 +359,46 @@ QScrollBar::handle:horizontal:hover {{
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
     width: 0px;
 }}
+
+/* ==================== SPLITTER ==================== */
 QSplitter::handle {{
     background-color: {colors.bg_secondary};
 }}
 QSplitter::handle:hover {{
     background-color: {colors.accent};
 }}
+
+/* ==================== PDF VIEWER ==================== */
 QGraphicsView {{
     border: 1px solid {colors.border};
     border-radius: 8px;
     background-color: {colors.bg_secondary};
 }}
+
+/* ==================== SCROLL AREA ==================== */
 QScrollArea {{
     border: none;
     background-color: transparent;
 }}
+
+/* ==================== SIGNATURE THUMBNAILS ==================== */
 QToolButton {{
-    background-color: {colors.bg_secondary};
-    border-radius: 8px;
+    background-color: {colors.surface2};
+    border: 1px solid {colors.border};
+    border-radius: 10px;
     padding: 5px;
-    border: 1px solid transparent;
 }}
 QToolButton:hover {{
-    border: 1px solid {colors.accent};
-    background-color: {colors.border};
+    border-color: {colors.accent};
+}}
+
+/* ==================== SLIDER VALUE LABEL ==================== */
+.slider-value {{
+    font-family: 'DM Mono', 'Consolas', monospace;
+    font-size: 12px;
+    color: {colors.accent2};
+    font-weight: 500;
+    min-width: 36px;
+    background-color: transparent;
 }}
 """

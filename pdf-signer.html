@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF Signer</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0c0c10;
+    --surface: #131318;
+    --surface2: #1a1a22;
+    --border: rgba(255,255,255,0.07);
+    --border-hover: rgba(120,100,255,0.4);
+    --accent: #7c5cfc;
+    --accent2: #c084fc;
+    --accent-glow: rgba(124,92,252,0.25);
+    --text: #e8e6f0;
+    --muted: #6b6880;
+    --success: #34d399;
+    --danger: #f87171;
+    --danger-dim: rgba(248,113,113,0.12);
+    --mono: 'DM Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 32px 16px;
+  }
+
+  .app {
+    width: 100%;
+    max-width: 680px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  /* Header */
+  .header {
+    padding: 0 0 28px 0;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+
+  .header-left h1 {
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    background: linear-gradient(135deg, #e8e6f0 0%, var(--accent2) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1;
+  }
+
+  .header-left p {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 6px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .theme-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    padding: 6px 12px 6px 8px;
+    cursor: pointer;
+    transition: border-color 0.2s;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+    user-select: none;
+  }
+
+  .theme-pill:hover { border-color: var(--border-hover); color: var(--text); }
+
+  .theme-dot {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  .theme-dot svg { width: 10px; height: 10px; }
+
+  /* Card */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    margin-bottom: 12px;
+    transition: border-color 0.2s;
+  }
+
+  .card:hover { border-color: rgba(255,255,255,0.1); }
+
+  .card-header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .card-icon {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    background: var(--accent-glow);
+    border: 1px solid rgba(124,92,252,0.3);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .card-icon svg { width: 14px; height: 14px; color: var(--accent2); }
+
+  .card-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -0.01em;
+  }
+
+  .card-body { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+
+  /* File Input Row */
+  .file-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .file-input-wrap {
+    flex: 1;
+    position: relative;
+  }
+
+  .file-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 6px;
+  }
+
+  .file-input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 14px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    cursor: text;
+  }
+
+  .file-input::placeholder { color: var(--muted); }
+
+  .file-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+  }
+
+  .btn-browse {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0 16px;
+    height: 40px;
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+    display: flex; align-items: center; gap: 6px;
+    margin-top: 18px;
+  }
+
+  .btn-browse:hover {
+    border-color: var(--accent);
+    color: var(--accent2);
+    background: var(--accent-glow);
+  }
+
+  .btn-browse svg { width: 13px; height: 13px; }
+
+  /* Toggles */
+  .toggles-row {
+    display: flex;
+    gap: 12px;
+  }
+
+  .toggle-item {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    user-select: none;
+  }
+
+  .toggle-item:hover { border-color: var(--border-hover); }
+  .toggle-item.active { border-color: rgba(124,92,252,0.3); background: rgba(124,92,252,0.07); }
+
+  .toggle-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .toggle-sub {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  /* Toggle Switch */
+  .switch {
+    width: 36px; height: 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    position: relative;
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+
+  .switch.on {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .switch::after {
+    content: '';
+    position: absolute;
+    left: 2px; top: 2px;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: all 0.2s;
+  }
+
+  .switch.on::after {
+    left: 18px;
+    background: white;
+  }
+
+  /* Placement Section */
+  .placement-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .field-group { display: flex; flex-direction: column; gap: 6px; }
+
+  .field-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .page-input {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 14px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 500;
+    outline: none;
+    width: 100%;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  .page-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+  }
+
+  .page-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .btn-save-pos {
+    flex: 1;
+    background: linear-gradient(135deg, var(--accent), #9b6bfc);
+    border: none;
+    border-radius: 10px;
+    padding: 11px 14px;
+    color: white;
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: -0.01em;
+  }
+
+  .btn-save-pos:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(124,92,252,0.35);
+  }
+
+  .btn-clear-pos {
+    background: var(--danger-dim);
+    border: 1px solid rgba(248,113,113,0.2);
+    border-radius: 10px;
+    padding: 11px 14px;
+    color: var(--danger);
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-clear-pos:hover {
+    background: rgba(248,113,113,0.2);
+    border-color: rgba(248,113,113,0.4);
+  }
+
+  /* Slider */
+  .slider-row { display: flex; align-items: center; gap: 12px; }
+
+  .slider-track { flex: 1; position: relative; height: 4px; background: var(--surface2); border-radius: 4px; cursor: pointer; }
+
+  input[type=range] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 4px;
+    background: transparent;
+    outline: none;
+    cursor: pointer;
+    position: relative;
+  }
+
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid rgba(255,255,255,0.2);
+    box-shadow: 0 0 10px var(--accent-glow);
+    cursor: pointer;
+    transition: box-shadow 0.2s;
+  }
+
+  input[type=range]::-webkit-slider-thumb:hover {
+    box-shadow: 0 0 16px rgba(124,92,252,0.5);
+  }
+
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 4px;
+    background: linear-gradient(to right, var(--accent) var(--pct, 50%), var(--surface2) var(--pct, 50%));
+  }
+
+  .slider-value {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent2);
+    min-width: 36px;
+    text-align: right;
+    font-weight: 500;
+  }
+
+  .pages-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .pages-badge .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+  }
+
+  /* Export Buttons */
+  .export-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .btn-export {
+    background: linear-gradient(135deg, rgba(52,211,153,0.12), rgba(52,211,153,0.06));
+    border: 1px solid rgba(52,211,153,0.25);
+    border-radius: 12px;
+    padding: 14px 16px;
+    color: var(--success);
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    letter-spacing: -0.01em;
+  }
+
+  .btn-export:hover {
+    background: linear-gradient(135deg, rgba(52,211,153,0.2), rgba(52,211,153,0.1));
+    border-color: rgba(52,211,153,0.5);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(52,211,153,0.15);
+  }
+
+  .btn-export svg { width: 14px; height: 14px; }
+
+  .specified-row {
+    display: flex;
+    gap: 10px;
+  }
+
+  .specified-input {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 14px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    outline: none;
+    transition: all 0.2s;
+  }
+
+  .specified-input::placeholder { color: var(--muted); }
+  .specified-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+
+  .btn-export-sm {
+    background: linear-gradient(135deg, rgba(52,211,153,0.12), rgba(52,211,153,0.06));
+    border: 1px solid rgba(52,211,153,0.25);
+    border-radius: 10px;
+    padding: 10px 16px;
+    color: var(--success);
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+
+  .btn-export-sm:hover {
+    background: rgba(52,211,153,0.2);
+    border-color: rgba(52,211,153,0.5);
+  }
+
+  /* Viewport Controls */
+  .viewport-row {
+    display: flex;
+    gap: 10px;
+  }
+
+  .btn-view {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 11px;
+    color: var(--muted);
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+  }
+
+  .btn-view:hover { border-color: var(--border-hover); color: var(--text); }
+  .btn-view.active { border-color: var(--accent); color: var(--accent2); background: var(--accent-glow); }
+
+  .btn-view svg { width: 13px; height: 13px; }
+
+  /* Saved Signatures */
+  .sig-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+    gap: 10px;
+  }
+
+  .sig-thumb {
+    aspect-ratio: 16/9;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    overflow: hidden;
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  .sig-thumb:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.3); }
+  .sig-thumb.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+
+  .sig-thumb svg { width: 32px; height: 32px; opacity: 0.3; }
+
+  .sig-add {
+    aspect-ratio: 16/9;
+    background: transparent;
+    border: 1px dashed rgba(255,255,255,0.1);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex; align-items: center; justify-content: center;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .sig-add:hover { border-color: var(--accent); color: var(--accent2); background: var(--accent-glow); }
+  .sig-add svg { width: 13px; height: 13px; }
+
+  /* Zoom row */
+  .zoom-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+
+  /* divider */
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 2px 0;
+  }
+
+  /* Animated glow on accent buttons */
+  @keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 12px rgba(124,92,252,0.3); }
+    50% { box-shadow: 0 0 24px rgba(124,92,252,0.5); }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <h1>PDF Signer</h1>
+      <p>Document signature tool</p>
+    </div>
+    <div class="theme-pill" onclick="toggleTheme()">
+      <div class="theme-dot">
+        <svg viewBox="0 0 12 12" fill="none" stroke="white" stroke-width="1.5">
+          <circle cx="6" cy="6" r="2.5"/>
+          <path d="M6 1v1M6 10v1M1 6h1M10 6h1M2.5 2.5l.7.7M8.8 8.8l.7.7M2.5 9.5l.7-.7M8.8 3.2l.7-.7"/>
+        </svg>
+      </div>
+      Dark mode
+    </div>
+  </div>
+
+  <!-- Files Card -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M9 1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5L9 1Z"/>
+          <path d="M9 1v4h4"/>
+        </svg>
+      </div>
+      <span class="card-title">File Setup</span>
+    </div>
+    <div class="card-body">
+      <div class="file-row">
+        <div class="file-input-wrap">
+          <label class="file-label">PDF File</label>
+          <input class="file-input" type="text" placeholder="No file selected…">
+        </div>
+        <button class="btn-browse">
+          <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M1 3.5A1.5 1.5 0 0 1 2.5 2H5l1.5 1.5H11A1.5 1.5 0 0 1 12.5 5v5A1.5 1.5 0 0 1 11 11.5H2.5A1.5 1.5 0 0 1 1 10V3.5Z"/>
+          </svg>
+          Browse
+        </button>
+      </div>
+      <div class="file-row">
+        <div class="file-input-wrap">
+          <label class="file-label">Signature File</label>
+          <input class="file-input" type="text" placeholder="No file selected…">
+        </div>
+        <button class="btn-browse">
+          <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M1 3.5A1.5 1.5 0 0 1 2.5 2H5l1.5 1.5H11A1.5 1.5 0 0 1 12.5 5v5A1.5 1.5 0 0 1 11 11.5H2.5A1.5 1.5 0 0 1 1 10V3.5Z"/>
+          </svg>
+          Browse
+        </button>
+      </div>
+      <div class="file-row">
+        <div class="file-input-wrap">
+          <label class="file-label">Output Destination</label>
+          <input class="file-input" type="text" value="C:\Users\ASUS\Desktop\output.pdf">
+        </div>
+        <button class="btn-browse">
+          <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M1 3.5A1.5 1.5 0 0 1 2.5 2H5l1.5 1.5H11A1.5 1.5 0 0 1 12.5 5v5A1.5 1.5 0 0 1 11 11.5H2.5A1.5 1.5 0 0 1 1 10V3.5Z"/>
+          </svg>
+          Browse
+        </button>
+      </div>
+      <div class="toggles-row">
+        <div class="toggle-item" id="tog1" onclick="toggleSwitch('sw1','tog1')">
+          <div>
+            <div class="toggle-label">Save Signature</div>
+            <div class="toggle-sub">For future use</div>
+          </div>
+          <div class="switch" id="sw1"></div>
+        </div>
+        <div class="toggle-item" id="tog2" onclick="toggleSwitch('sw2','tog2')">
+          <div>
+            <div class="toggle-label">Remove Background</div>
+            <div class="toggle-sub">Alpha strip</div>
+          </div>
+          <div class="switch" id="sw2"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Placement Card -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="2" y="2" width="12" height="12" rx="1"/>
+          <path d="M8 5v6M5 8h6"/>
+        </svg>
+      </div>
+      <span class="card-title">Page & Signature Placement</span>
+    </div>
+    <div class="card-body">
+      <div class="placement-grid">
+        <div class="field-group">
+          <label class="field-label">Current Page</label>
+          <input class="page-input" type="number" value="1" min="1">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Pages with Positions</label>
+          <div class="pages-badge">
+            <div class="dot"></div>
+            None assigned
+          </div>
+        </div>
+      </div>
+      <div class="page-actions">
+        <button class="btn-save-pos">Save Position for Current Page</button>
+        <button class="btn-clear-pos">Clear</button>
+      </div>
+      <div class="field-group">
+        <div class="zoom-label">Signature Scale</div>
+        <div class="slider-row">
+          <input type="range" id="scaleSlider" min="0" max="100" value="50" oninput="updateSlider(this,'scaleVal')">
+          <span class="slider-value" id="scaleVal">0.50</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Export Card -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M8 2v8M5 7l3 3 3-3"/>
+          <path d="M3 11v1.5A1.5 1.5 0 0 0 4.5 14h7a1.5 1.5 0 0 0 1.5-1.5V11"/>
+        </svg>
+      </div>
+      <span class="card-title">Save & Export</span>
+    </div>
+    <div class="card-body">
+      <div class="export-grid">
+        <button class="btn-export">
+          <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M7 1v8M4 6l3 3 3-3"/>
+            <path d="M2 10v1.5A.5.5 0 0 0 2.5 12h9a.5.5 0 0 0 .5-.5V10"/>
+          </svg>
+          Save Current Page
+        </button>
+        <button class="btn-export">
+          <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M7 1v8M4 6l3 3 3-3"/>
+            <path d="M2 10v1.5A.5.5 0 0 0 2.5 12h9a.5.5 0 0 0 .5-.5V10"/>
+          </svg>
+          Save All Pages
+        </button>
+      </div>
+      <div class="specified-row">
+        <input class="specified-input" type="text" placeholder="Specified pages (e.g. 1, 3, 5-7)">
+        <button class="btn-export-sm">Save Specified</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Viewport Card -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="2" y="3" width="12" height="10" rx="1.5"/>
+          <path d="M5 13v1M11 13v1M8 13v1"/>
+        </svg>
+      </div>
+      <span class="card-title">Viewport Controls</span>
+    </div>
+    <div class="card-body">
+      <div class="viewport-row">
+        <button class="btn-view active" onclick="setView(this)">
+          <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M2 4h10M2 7h10M2 10h6"/>
+          </svg>
+          Fit to Width
+        </button>
+        <button class="btn-view" onclick="setView(this)">
+          <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="3" y="1.5" width="8" height="11" rx="1"/>
+          </svg>
+          Fit Page
+        </button>
+      </div>
+      <div class="field-group">
+        <div class="zoom-label">Zoom</div>
+        <div class="slider-row">
+          <input type="range" id="zoomSlider" min="10" max="300" value="100" oninput="updateZoom(this)">
+          <span class="slider-value" id="zoomVal">100%</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Saved Signatures -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M3 12c2-4 8-4 10 0"/>
+          <circle cx="8" cy="6" r="2.5"/>
+        </svg>
+      </div>
+      <span class="card-title">Saved Signatures</span>
+    </div>
+    <div class="card-body">
+      <div class="sig-grid">
+        <div class="sig-thumb selected" title="Signature 1">
+          <svg viewBox="0 0 40 20" fill="none" stroke="rgba(124,92,252,0.6)" stroke-width="1.5">
+            <path d="M4 14c4-8 8-8 12 0 4-8 8-8 12 0" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="sig-thumb" title="Signature 2">
+          <svg viewBox="0 0 40 20" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="1.5">
+            <path d="M5 10 Q10 4 15 10 Q20 16 25 10 Q30 4 35 10" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="sig-add" title="Add Signature">
+          <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M7 3v8M3 7h8"/>
+          </svg>
+          Add
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  function toggleSwitch(swId, togId) {
+    const sw = document.getElementById(swId);
+    const tog = document.getElementById(togId);
+    sw.classList.toggle('on');
+    tog.classList.toggle('active');
+  }
+
+  function updateSlider(el, valId) {
+    const pct = ((el.value - el.min) / (el.max - el.min)) * 100;
+    el.style.setProperty('--pct', pct + '%');
+    const val = (el.value / 100).toFixed(2);
+    document.getElementById(valId).textContent = val;
+  }
+
+  function updateZoom(el) {
+    const pct = ((el.value - el.min) / (el.max - el.min)) * 100;
+    el.style.setProperty('--pct', pct + '%');
+    document.getElementById('zoomVal').textContent = el.value + '%';
+  }
+
+  function setView(btn) {
+    document.querySelectorAll('.btn-view').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+
+  // init slider tracks
+  document.querySelectorAll('input[type=range]').forEach(el => {
+    const pct = ((el.value - el.min) / (el.max - el.min)) * 100;
+    el.style.setProperty('--pct', pct + '%');
+  });
+
+  function toggleTheme() {
+    const r = document.documentElement;
+    const current = getComputedStyle(r).getPropertyValue('--bg').trim();
+    if (current === '#0c0c10') {
+      r.style.setProperty('--bg', '#f4f3f8');
+      r.style.setProperty('--surface', '#ffffff');
+      r.style.setProperty('--surface2', '#f0eff6');
+      r.style.setProperty('--border', 'rgba(0,0,0,0.08)');
+      r.style.setProperty('--text', '#1a1825');
+      r.style.setProperty('--muted', '#9896aa');
+    } else {
+      r.style.setProperty('--bg', '#0c0c10');
+      r.style.setProperty('--surface', '#131318');
+      r.style.setProperty('--surface2', '#1a1a22');
+      r.style.setProperty('--border', 'rgba(255,255,255,0.07)');
+      r.style.setProperty('--text', '#e8e6f0');
+      r.style.setProperty('--muted', '#6b6880');
+    }
+  }
+</script>
+</body>
+</html>
